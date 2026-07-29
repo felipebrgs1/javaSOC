@@ -10,7 +10,13 @@ import java.util.Collection;
  */
 public interface ChannelSubscriptions {
 
-    void subscribe(String channelId, WebSocketSession session);
+    /**
+     * Atomically capture the current subscribers of {@code channelId} and
+     * add {@code session} to it. Returns the pre-existing subscribers
+     * (excluding {@code session}). This avoids the race where two concurrent
+     * subscribes both observe an empty channel.
+     */
+    Collection<WebSocketSession> subscribeAndGetPreExisting(String channelId, WebSocketSession session);
 
     void unsubscribe(String channelId, WebSocketSession session);
 

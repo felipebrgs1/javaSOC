@@ -3,6 +3,7 @@ package com.felipeb.discordclone.chat.subscription;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
@@ -15,8 +16,14 @@ public class InMemoryChannelSubscriptions implements ChannelSubscriptions {
     private final Map<String, Set<WebSocketSession>> byChannel = new ConcurrentHashMap<>();
 
     @Override
-    public void subscribe(String channelId, WebSocketSession session) {
-        byChannel.computeIfAbsent(channelId, k -> ConcurrentHashMap.newKeySet()).add(session);
+    public Collection<WebSocketSession> subscribeAndGetPreExisting(String channelId, WebSocketSession session) {
+        Set<WebSocketSession> set = byChannel.computeIfAbsent(channelId, k -> ConcurrentHashMap.newKeySet());
+        // Synchronize on the set so the snapshot+add is atomic for this channel.
+        synchronized (set) {
+            Collection<WebSocketSession> preExisting = new ArrayList<>(set);
+            set.add(session);
+            return preExisting;
+        }
     }
 
     @Override

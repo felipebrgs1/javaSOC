@@ -63,6 +63,9 @@ secrets/
 *.trace.db
 data/
 
+# Phase 5 attachment uploads (runtime-created, contains user files)
+uploads/
+
 # Profiling / coverage
 *.hprof
 *.dump

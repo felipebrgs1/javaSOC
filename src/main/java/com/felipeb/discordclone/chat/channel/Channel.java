@@ -3,6 +3,8 @@ package com.felipeb.discordclone.chat.channel;
 import com.felipeb.discordclone.server.Server;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -33,6 +35,10 @@ public class Channel {
     @Column(nullable = false, length = 64)
     private String name;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "default_permission", nullable = false, length = 16)
+    private ChannelPermission defaultPermission = ChannelPermission.READ_WRITE;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -46,10 +52,20 @@ public class Channel {
         this.createdAt = Instant.now();
     }
 
+    public Channel(Server server, String name, ChannelPermission defaultPermission) {
+        this(server, name);
+        this.defaultPermission = defaultPermission;
+    }
+
     public Long getId() { return id; }
     public Server getServer() { return server; }
     public String getName() { return name; }
+    public ChannelPermission getDefaultPermission() { return defaultPermission; }
     public Instant getCreatedAt() { return createdAt; }
+
+    public void setDefaultPermission(ChannelPermission defaultPermission) {
+        this.defaultPermission = defaultPermission;
+    }
 
     @Override
     public boolean equals(Object o) {

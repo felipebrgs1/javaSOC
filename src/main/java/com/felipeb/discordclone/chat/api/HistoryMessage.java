@@ -17,7 +17,10 @@ public record HistoryMessage(
             Long id,
             String from,
             String content,
-            Instant timestamp
+            Instant timestamp,
+            Instant editedAt,
+            List<OutgoingMessage.ReactionView> reactions,
+            List<OutgoingMessage.AttachmentView> attachments
     ) {
     }
 

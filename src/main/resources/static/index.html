@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Discord Clone — Phase 4 (presence: ONLINE/IDLE/OFFLINE via heartbeat)</title>
+    <title>Discord Clone — Phase 5 (edit/delete/reactions/attachments/read-only)</title>
     <style>
         * { box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 20px; background: #1e1f22; color: #dcddde; }
@@ -15,343 +15,497 @@
         .section:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
         .section h3 { margin: 0 0 8px; font-size: 12px; color: #949ba4; text-transform: uppercase; letter-spacing: 0.5px; }
         .status { font-size: 12px; margin-bottom: 10px; word-break: break-all; }
-        .status.online { color: #23a55a; }
-        .status.offline { color: #f23f43; }
-        .status.subscribed { color: #23a55a; }
-        .status.not-subscribed { color: #949ba4; }
-        .status.logged-in { color: #5865f2; }
-        .status.logged-out { color: #949ba4; }
-        .presence-row { display: flex; gap: 8px; align-items: center; padding: 3px 0; font-size: 12px; }
-        .dot { width: 8px; height: 8px; border-radius: 50%; }
-        .dot.ONLINE  { background: #23a55a; }
-        .dot.IDLE    { background: #f0b232; }
-        .dot.OFFLINE { background: #80848e; }
+        .status.online { color: #23a55a; } .status.offline { color: #f23f43; }
+        .status.subscribed { color: #23a55a; } .status.not-subscribed { color: #949ba4; }
+        .status.logged-in { color: #5865f2; } .status.logged-out { color: #949ba4; }
+        .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+        .dot.ONLINE { background: #23a55a; } .dot.IDLE { background: #f0b232; } .dot.OFFLINE { background: #80848e; }
         label { display: block; font-size: 12px; color: #b5bac1; margin: 8px 0 4px; }
-        input, button { font: inherit; padding: 8px 10px; border-radius: 4px; border: 1px solid #1e1f22; background: #1e1f22; color: #dcddde; }
-        input:focus { outline: 1px solid #5865f2; }
+        input, button, textarea { font: inherit; padding: 8px 10px; border-radius: 4px; border: 1px solid #1e1f22; background: #1e1f22; color: #dcddde; }
+        input:focus, textarea:focus { outline: 1px solid #5865f2; }
         button { background: #5865f2; border: none; color: white; cursor: pointer; padding: 8px 14px; }
-        button:hover { background: #4752c4; }
-        button:disabled { background: #4e5058; cursor: not-allowed; }
-        button.secondary { background: #4e5058; }
-        button.secondary:hover { background: #5d6068; }
+        button:hover { background: #4752c4; } button:disabled { background: #4e5058; cursor: not-allowed; }
+        button.secondary { background: #4e5058; } button.secondary:hover { background: #5d6068; }
+        button.danger { background: #f23f43; } button.danger:hover { background: #c12d31; }
         .row-form { display: flex; gap: 8px; margin-top: 8px; }
         .row-form input { flex: 1; }
-        .log { background: #1e1f22; border-radius: 4px; padding: 10px; height: 140px; overflow-y: auto; font-family: "SF Mono", Menlo, monospace; font-size: 11px; margin-top: 8px; }
-        .log .in  { color: #23a55a; }
-        .log .out { color: #5865f2; }
-        .log .err { color: #f23f43; }
-        .log .hist { color: #f0b232; }
-        .log .pres { color: #b794f6; }
         .token { font-family: "SF Mono", Menlo, monospace; font-size: 10px; color: #5865f2; word-break: break-all; }
+        .messages { background: #1e1f22; border-radius: 4px; padding: 10px; height: 320px; overflow-y: auto; font-family: "SF Mono", Menlo, monospace; font-size: 12px; margin-top: 8px; }
+        .msg { padding: 6px 8px; border-radius: 4px; margin-bottom: 6px; background: #2b2d31; }
+        .msg .head { display: flex; justify-content: space-between; align-items: center; }
+        .msg .who { font-weight: 600; }
+        .msg.mine .who { color: #5865f2; }
+        .msg .ts { color: #6d6f78; font-size: 10px; }
+        .msg .body { margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+        .msg .edited { color: #f0b232; font-size: 10px; }
+        .msg .rx { margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap; }
+        .msg .rx .btn { padding: 2px 8px; background: #4e5058; border-radius: 10px; font-size: 11px; cursor: pointer; border: none; color: #dcddde; }
+        .msg .rx .btn.mine { background: #5865f2; }
+        .msg .rx .btn:hover { background: #5d6068; }
+        .msg .actions { display: flex; gap: 6px; margin-top: 4px; }
+        .msg .actions button { padding: 2px 8px; font-size: 11px; background: #4e5058; }
+        .msg .actions button:hover { background: #5d6068; }
+        .msg .att { font-size: 11px; color: #b5bac1; margin-top: 4px; }
+        .msg .att a { color: #5865f2; text-decoration: none; }
+        .msg .att a:hover { text-decoration: underline; }
+        .presence-row { display: flex; gap: 8px; align-items: center; padding: 3px 0; font-size: 12px; }
     </style>
 </head>
 <body>
-<h1>Discord Clone — Phase 4: presence (ONLINE/IDLE/OFFLINE) via heartbeat</h1>
-<div class="subtitle">Sends HEARTBEAT every 5s. Server marks you <b style="color:#23a55a">ONLINE</b> → <b style="color:#f0b232">IDLE</b> after 30s without heartbeat → <b style="color:#80848e">OFFLINE</b> after 60s (or on disconnect). State is broadcast to all channels you share with others.</div>
-<div class="row">
-    <div class="panel">
-        <h2>User A</h2>
-        <div class="section">
-            <h3>1. Account</h3>
-            <div class="status logged-out" id="login-status-a">not logged in</div>
-            <label>Username</label>
-            <input id="user-a" value="alice">
-            <label>Password</label>
-            <input id="pass-a" type="password" value="alice123">
-            <div class="row-form">
-                <button id="register-a">Register</button>
-                <button id="login-a" class="secondary">Login</button>
-            </div>
-            <div class="token" id="token-a"></div>
-        </div>
-        <div class="section">
-            <h3>2. WebSocket</h3>
-            <div class="status offline" id="status-a">disconnected</div>
-            <div class="row-form">
-                <button id="connect-a" disabled>Connect &amp; AUTH</button>
-                <button id="disconnect-a" class="secondary" disabled>Disconnect</button>
-            </div>
-        </div>
-        <div class="section">
-            <h3>3. Channel</h3>
-            <div class="status not-subscribed" id="chan-status-a">not subscribed</div>
-            <div class="row-form">
-                <input id="server-a" value="discord-clone" placeholder="server">
-                <input id="chan-a" value="general" placeholder="channel">
-            </div>
-            <div class="row-form">
-                <button id="sub-a" disabled>Subscribe</button>
-                <button id="unsub-a" class="secondary" disabled>Unsubscribe</button>
-            </div>
-            <div class="log" id="pres-a"></div>
-        </div>
-        <div class="section">
-            <h3>4. Channel chat</h3>
-            <div class="row-form">
-                <input id="chanmsg-a" placeholder="Type a channel message…">
-                <button id="sendchan-a" disabled>Send</button>
-            </div>
-            <div class="log" id="chanlog-a"></div>
-        </div>
-    </div>
-
-    <div class="panel">
-        <h2>User B</h2>
-        <div class="section">
-            <h3>1. Account</h3>
-            <div class="status logged-out" id="login-status-b">not logged in</div>
-            <label>Username</label>
-            <input id="user-b" value="bob">
-            <label>Password</label>
-            <input id="pass-b" type="password" value="bob123">
-            <div class="row-form">
-                <button id="register-b">Register</button>
-                <button id="login-b" class="secondary">Login</button>
-            </div>
-            <div class="token" id="token-b"></div>
-        </div>
-        <div class="section">
-            <h3>2. WebSocket</h3>
-            <div class="status offline" id="status-b">disconnected</div>
-            <div class="row-form">
-                <button id="connect-b" disabled>Connect &amp; AUTH</button>
-                <button id="disconnect-b" class="secondary" disabled>Disconnect</button>
-            </div>
-        </div>
-        <div class="section">
-            <h3>3. Channel</h3>
-            <div class="status not-subscribed" id="chan-status-b">not subscribed</div>
-            <div class="row-form">
-                <input id="server-b" value="discord-clone" placeholder="server">
-                <input id="chan-b" value="general" placeholder="channel">
-            </div>
-            <div class="row-form">
-                <button id="sub-b" disabled>Subscribe</button>
-                <button id="unsub-b" class="secondary" disabled>Unsubscribe</button>
-            </div>
-            <div class="log" id="pres-b"></div>
-        </div>
-        <div class="section">
-            <h3>4. Channel chat</h3>
-            <div class="row-form">
-                <input id="chanmsg-b" placeholder="Type a channel message…">
-                <button id="sendchan-b" disabled>Send</button>
-            </div>
-            <div class="log" id="chanlog-b"></div>
-        </div>
-    </div>
+<h1>Discord Clone — Phase 5</h1>
+<div class="subtitle">Edit / delete / reactions / attachments / read-only channels. Heartbeats every 5s, presence tracked per channel.</div>
+<div class="row" id="panels">
 </div>
 
 <script>
-    const HEARTBEAT_MS = 5000;
+const HEARTBEAT_MS = 5000;
+const DEFAULT_USERS = [
+    { id: 'a', user: 'alice', pass: 'alice123' },
+    { id: 'b', user: 'bob',   pass: 'bob123' },
+];
 
-    async function api(path, method, body) {
-        const res = await fetch(path, {
-            method,
-            headers: body ? { 'Content-Type': 'application/json' } : {},
-            body: body ? JSON.stringify(body) : undefined
-        });
-        const text = await res.text();
-        let data; try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-        if (!res.ok) {
-            const msg = (data && data.detail) ? data.detail : (typeof data === 'string' ? data : res.statusText);
-            throw new Error(msg);
-        }
-        return data;
+async function api(path, method, body, token) {
+    const opts = { method, headers: {} };
+    if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+    const res = await fetch(path, opts);
+    const text = await res.text();
+    let data; try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+    if (!res.ok) {
+        const msg = (data && data.detail) ? data.detail : (typeof data === 'string' ? data : res.statusText);
+        throw new Error(msg);
     }
+    return data;
+}
 
-    function makeClient(side) {
-        const els = {
-            loginStatus: document.getElementById('login-status-' + side),
-            user: document.getElementById('user-' + side),
-            pass: document.getElementById('pass-' + side),
-            register: document.getElementById('register-' + side),
-            login: document.getElementById('login-' + side),
-            token: document.getElementById('token-' + side),
-            status: document.getElementById('status-' + side),
-            connect: document.getElementById('connect-' + side),
-            disconnect: document.getElementById('disconnect-' + side),
-            chanStatus: document.getElementById('chan-status-' + side),
-            server: document.getElementById('server-' + side),
-            chan: document.getElementById('chan-' + side),
-            pres: document.getElementById('pres-' + side),
-            chanlog: document.getElementById('chanlog-' + side),
-            chanmsg: document.getElementById('chanmsg-' + side),
-            sub: document.getElementById('sub-' + side),
-            unsub: document.getElementById('unsub-' + side),
-            sendChan: document.getElementById('sendchan-' + side),
-        };
+async function uploadAttachment(file, token) {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/attachments', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token },
+        body: fd
+    });
+    if (!res.ok) throw new Error('Upload failed: ' + res.statusText);
+    return res.json();
+}
 
-        let ws = null, jwt = null, currentUser = null, heartbeatTimer = null;
-        const presence = new Map();   // username -> status
-        const otherKey = side === 'a' ? 'b' : 'a';
+function buildPanel(side) {
+    const cfg = DEFAULT_USERS.find(u => u.id === side);
+    const wrap = document.createElement('div');
+    wrap.className = 'panel';
+    wrap.innerHTML = `
+        <h2>User ${cfg.user.toUpperCase()}</h2>
+        <div class="section">
+            <h3>1. Account</h3>
+            <div class="status logged-out" id="login-status-${side}">not logged in</div>
+            <label>Username</label>
+            <input id="user-${side}" value="${cfg.user}">
+            <label>Password</label>
+            <input id="pass-${side}" type="password" value="${cfg.pass}">
+            <div class="row-form">
+                <button id="register-${side}">Register</button>
+                <button id="login-${side}" class="secondary">Login</button>
+            </div>
+            <div class="token" id="token-${side}"></div>
+        </div>
+        <div class="section">
+            <h3>2. WebSocket</h3>
+            <div class="status offline" id="status-${side}">disconnected</div>
+            <div class="row-form">
+                <button id="connect-${side}" disabled>Connect &amp; AUTH</button>
+                <button id="disconnect-${side}" class="secondary" disabled>Disconnect</button>
+            </div>
+        </div>
+        <div class="section">
+            <h3>3. Channel</h3>
+            <div class="status not-subscribed" id="chan-status-${side}">not subscribed</div>
+            <div class="row-form">
+                <input id="server-${side}" value="discord-clone" placeholder="server">
+                <input id="chan-${side}" value="general" placeholder="channel">
+            </div>
+            <div class="row-form">
+                <button id="sub-${side}" disabled>Subscribe</button>
+                <button id="unsub-${side}" class="secondary" disabled>Unsubscribe</button>
+            </div>
+            <div class="row-form" id="att-row-${side}" style="display:none">
+                <input type="file" id="file-${side}">
+                <button id="att-btn-${side}" class="secondary">Upload</button>
+                <button id="att-clear-${side}" class="secondary">×</button>
+            </div>
+            <div id="att-status-${side}" class="token"></div>
+            <div class="row-form">
+                <input id="chanmsg-${side}" placeholder="Type a channel message…">
+                <button id="sendchan-${side}" disabled>Send</button>
+            </div>
+            <div class="messages" id="msgs-${side}"></div>
+        </div>
+        <div class="section">
+            <h3>4. Presence in this channel</h3>
+            <div id="pres-${side}"></div>
+        </div>
+    `;
+    document.getElementById('panels').appendChild(wrap);
 
-        function log(target, direction, text, cls) {
-            const time = new Date().toLocaleTimeString();
+    const state = {
+        ws: null, jwt: null, currentUser: null, currentUserId: null,
+        heartbeatTimer: null,
+        messages: new Map(),   // id -> {id, from, content, edited, reactions, attachments, mine}
+        pendingAttachments: [],  // [{id, filename, contentType, sizeBytes, url}]
+        subscribed: null,     // "server:channel"
+    };
+
+    const $ = (id) => document.getElementById(id + '-' + side);
+    const log = (target, text, cls) => {
+        const d = document.createElement('div');
+        d.className = cls || 'in';
+        d.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+        target.appendChild(d);
+        target.scrollTop = target.scrollHeight;
+    };
+
+    const presence = new Map();
+    const renderPresence = () => {
+        const c = $('pres');
+        c.innerHTML = '';
+        for (const [name, status] of presence.entries()) {
+            const row = document.createElement('div');
+            row.className = 'presence-row';
+            const dot = document.createElement('span');
+            dot.className = 'dot ' + status;
+            row.appendChild(dot);
+            const label = document.createElement('span');
+            label.textContent = `${name}: ${status}`;
+            row.appendChild(label);
+            c.appendChild(row);
+        }
+    };
+
+    const setLogin = (state_, label) => {
+        $('login-status').textContent = label;
+        $('login-status').className = 'status ' + state_;
+        const ok = state_ === 'logged-in';
+        $('register').disabled = ok;
+        $('login').disabled = ok;
+        $('connect').disabled = !ok || !state.jwt;
+        $('user').disabled = ok;
+        $('pass').disabled = ok;
+    };
+
+    const setConnection = (connected) => {
+        $('status').textContent = connected ? `connected as ${state.currentUser}` : 'disconnected';
+        $('status').className = 'status ' + (connected ? 'online' : 'offline');
+        $('disconnect').disabled = !connected;
+        $('sub').disabled = !connected;
+        $('sendchan').disabled = !connected || !state.subscribed;
+        if (!connected) {
+            $('unsub').disabled = true;
+            $('chan-status').textContent = 'not subscribed';
+            $('chan-status').className = 'status not-subscribed';
+            state.subscribed = null;
+            state.messages.clear();
+            renderMessages();
+            presence.clear();
+            renderPresence();
+            if (state.heartbeatTimer) { clearInterval(state.heartbeatTimer); state.heartbeatTimer = null; }
+        }
+    };
+
+    const startHeartbeat = () => {
+        if (state.heartbeatTimer) clearInterval(state.heartbeatTimer);
+        state.heartbeatTimer = setInterval(() => {
+            if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+                state.ws.send(JSON.stringify({ type: 'HEARTBEAT' }));
+            }
+        }, HEARTBEAT_MS);
+    };
+
+    const sendWs = (obj) => {
+        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+        state.ws.send(JSON.stringify(obj));
+    };
+
+    const upsertMessage = (m, isMine) => {
+        state.messages.set(m.id, { ...(state.messages.get(m.id) || {}), ...m, mine: isMine ?? state.messages.get(m.id)?.mine });
+        renderMessages();
+    };
+
+    const renderMessages = () => {
+        const c = $('msgs');
+        c.innerHTML = '';
+        const sorted = [...state.messages.values()].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+        for (const m of sorted) {
             const div = document.createElement('div');
-            div.className = cls || direction;
-            div.textContent = `[${time}] ${direction === 'in' ? '←' : '→'} ${text}`;
-            target.appendChild(div);
-            target.scrollTop = target.scrollHeight;
-        }
+            div.className = 'msg' + (m.mine ? ' mine' : '');
+            const head = document.createElement('div');
+            head.className = 'head';
+            const who = document.createElement('span');
+            who.className = 'who';
+            who.textContent = m.from;
+            head.appendChild(who);
+            const ts = document.createElement('span');
+            ts.className = 'ts';
+            ts.textContent = m.id + ' · ' + (m.timestamp ? new Date(m.timestamp).toLocaleTimeString() : '');
+            head.appendChild(ts);
+            div.appendChild(head);
 
-        function renderPresence() {
-            els.pres.innerHTML = '';
-            for (const [name, status] of presence.entries()) {
-                const row = document.createElement('div');
-                row.className = 'presence-row';
-                const dot = document.createElement('span');
-                dot.className = 'dot ' + status;
-                row.appendChild(dot);
-                const label = document.createElement('span');
-                label.textContent = `${name}: ${status}`;
-                row.appendChild(label);
-                els.pres.appendChild(row);
+            const body = document.createElement('div');
+            body.className = 'body';
+            body.textContent = m.content;
+            div.appendChild(body);
+
+            if (m.editedAt) {
+                const ed = document.createElement('div');
+                ed.className = 'edited';
+                ed.textContent = '(edited)';
+                div.appendChild(ed);
             }
-        }
 
-        function setLoginState(state, label) {
-            els.loginStatus.textContent = label;
-            els.loginStatus.className = 'status ' + state;
-            const logged = state === 'logged-in';
-            els.register.disabled = logged;
-            els.login.disabled = logged;
-            els.connect.disabled = !logged || !jwt;
-            els.user.disabled = logged;
-            els.pass.disabled = logged;
-        }
+            // Attachments
+            if (m.attachments && m.attachments.length > 0) {
+                const att = document.createElement('div');
+                att.className = 'att';
+                for (const a of m.attachments) {
+                    const link = document.createElement('a');
+                    link.href = a.url;
+                    link.target = '_blank';
+                    link.textContent = '📎 ' + a.filename + ' (' + Math.round(a.sizeBytes / 1024) + 'KB)';
+                    att.appendChild(link);
+                    att.appendChild(document.createElement('br'));
+                }
+                div.appendChild(att);
+            }
 
-        function setStatus(connected) {
-            els.status.textContent = connected ? `connected as ${currentUser}` : 'disconnected';
-            els.status.className = 'status ' + (connected ? 'online' : 'offline');
-            els.disconnect.disabled = !connected;
-            els.sendChan.disabled = !connected || !els.sub.dataset.subscribed;
-            els.sub.disabled = !connected;
-            if (!connected) {
-                els.unsub.disabled = true;
-                els.chanStatus.textContent = 'not subscribed';
-                els.chanStatus.className = 'status not-subscribed';
-                els.sub.dataset.subscribed = '';
-                presence.clear();
+            // Reactions
+            const rxRow = document.createElement('div');
+            rxRow.className = 'rx';
+            const rxMap = new Map((m.reactions || []).map(r => [r.emoji, r]));
+            rxMap.set('👍', rxMap.get('👍') || { emoji: '👍', count: 0, includesMe: false });
+            for (const [emoji, r] of rxMap) {
+                const btn = document.createElement('button');
+                btn.className = 'btn' + (r.includesMe ? ' mine' : '');
+                btn.textContent = emoji + ' ' + r.count;
+                btn.disabled = !state.ws || state.ws.readyState !== WebSocket.OPEN;
+                btn.addEventListener('click', () => {
+                    sendWs({ type: r.includesMe ? 'UNREACT' : 'REACT', messageId: m.id, emoji });
+                });
+                rxRow.appendChild(btn);
+            }
+            div.appendChild(rxRow);
+
+            // Actions (only for own messages)
+            if (m.mine) {
+                const actions = document.createElement('div');
+                actions.className = 'actions';
+                const editBtn = document.createElement('button');
+                editBtn.textContent = 'Edit';
+                editBtn.addEventListener('click', () => startEdit(m, body));
+                actions.appendChild(editBtn);
+                const delBtn = document.createElement('button');
+                delBtn.className = 'danger';
+                delBtn.textContent = 'Delete';
+                delBtn.addEventListener('click', () => {
+                    if (confirm('Delete message #' + m.id + '?')) {
+                        sendWs({ type: 'DELETE_MESSAGE', messageId: m.id });
+                    }
+                });
+                actions.appendChild(delBtn);
+                div.appendChild(actions);
+            }
+
+            c.appendChild(div);
+        }
+        c.scrollTop = c.scrollHeight;
+    };
+
+    const startEdit = (m, bodyEl) => {
+        const orig = m.content;
+        const input = document.createElement('input');
+        input.value = orig;
+        input.style.width = '100%';
+        bodyEl.replaceWith(input);
+        input.focus();
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                sendWs({ type: 'EDIT_MESSAGE', messageId: m.id, content: input.value });
+            } else if (e.key === 'Escape') {
+                renderMessages();
+            }
+        });
+    };
+
+    $('register').addEventListener('click', async () => {
+        try {
+            const r = await api('/auth/register', 'POST', {
+                username: $('user').value.trim(),
+                email: $('user').value.trim() + '@example.com',
+                password: $('pass').value
+            });
+            state.jwt = r.token; state.currentUser = r.username; state.currentUserId = r.id;
+            $('token').textContent = 'token: ' + r.token.slice(0, 50) + '…';
+            setLogin('logged-in', `logged in as ${r.username} (id=${r.id})`);
+        } catch (e) { setLogin('logged-out', 'register failed: ' + e.message); }
+    });
+
+    $('login').addEventListener('click', async () => {
+        try {
+            const r = await api('/auth/login', 'POST', {
+                username: $('user').value.trim(),
+                password: $('pass').value
+            });
+            state.jwt = r.token; state.currentUser = r.username; state.currentUserId = r.id;
+            $('token').textContent = 'token: ' + r.token.slice(0, 50) + '…';
+            setLogin('logged-in', `logged in as ${r.username} (id=${r.id})`);
+        } catch (e) { setLogin('logged-out', 'login failed: ' + e.message); }
+    });
+
+    $('att-btn').addEventListener('click', async () => {
+        const f = $('file').files[0];
+        if (!f) return;
+        try {
+            const r = await uploadAttachment(f, state.jwt);
+            state.pendingAttachments.push(r);
+            $('att-status').textContent = 'Attached: ' + r.filename + ' (' + r.sizeBytes + ' bytes)';
+            $('file').value = '';
+        } catch (e) {
+            $('att-status').textContent = 'Upload error: ' + e.message;
+        }
+    });
+
+    $('att-clear').addEventListener('click', () => {
+        state.pendingAttachments = [];
+        $('att-status').textContent = '';
+        $('file').value = '';
+    });
+
+    $('connect').addEventListener('click', () => {
+        if (!state.jwt) return;
+        state.ws = new WebSocket('ws://' + location.host + '/ws/chat');
+        state.ws.onopen = () => {
+            sendWs({ type: 'AUTH', token: state.jwt });
+            startHeartbeat();
+        };
+        state.ws.onmessage = (ev) => {
+            let p; try { p = JSON.parse(ev.data); } catch { return; }
+            if (p.type === 'AUTHENTICATED') { setConnection(true); return; }
+            if (p.type === 'ERROR') {
+                log($('msgs'), p.content, 'err');
+                return;
+            }
+            if (p.type === 'PRESENCE_UPDATED') {
+                presence.set(p.username, p.status);
                 renderPresence();
-                if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+                return;
             }
+            if (p.type === 'SUBSCRIBED') {
+                state.subscribed = p.server + ':' + p.channel;
+                $('chan-status').textContent = 'subscribed to ' + state.subscribed;
+                $('chan-status').className = 'status subscribed';
+                $('sub').disabled = true; $('unsub').disabled = false;
+                $('sendchan').disabled = !state.ws || state.ws.readyState !== WebSocket.OPEN;
+                $('att-row').style.display = 'flex';
+                return;
+            }
+            if (p.type === 'UNSUBSCRIBED') {
+                state.subscribed = null;
+                $('chan-status').textContent = 'not subscribed';
+                $('chan-status').className = 'status not-subscribed';
+                $('sub').disabled = false; $('unsub').disabled = true;
+                $('sendchan').disabled = true;
+                $('att-row').style.display = 'none';
+                return;
+            }
+            if (p.type === 'HISTORY') {
+                state.messages.clear();
+                for (const m of (p.messages || [])) {
+                    state.messages.set(m.id, {
+                        id: m.id, from: m.from, content: m.content,
+                        timestamp: m.timestamp, editedAt: m.editedAt,
+                        reactions: m.reactions || [], attachments: m.attachments || [],
+                        mine: m.from === state.currentUser
+                    });
+                }
+                renderMessages();
+                return;
+            }
+            if (p.type === 'PUBLISHED') {
+                upsertMessage({
+                    id: p.id, from: p.from, content: p.content, timestamp: p.timestamp,
+                    reactions: [], attachments: []
+                }, p.from === state.currentUser);
+                return;
+            }
+            if (p.type === 'MESSAGE_EDITED') {
+                const m = state.messages.get(p.messageId);
+                if (m) { m.content = p.content; m.editedAt = p.editedAt; renderMessages(); }
+                return;
+            }
+            if (p.type === 'MESSAGE_DELETED') {
+                state.messages.delete(p.messageId);
+                renderMessages();
+                return;
+            }
+            if (p.type === 'REACTION_ADDED') {
+                const m = state.messages.get(p.messageId);
+                if (m) {
+                    const list = (m.reactions || []).slice();
+                    const existing = list.find(r => r.emoji === p.emoji);
+                    if (existing) { existing.count += 1; if (p.reactorId === state.currentUserId) existing.includesMe = true; }
+                    else list.push({ emoji: p.emoji, count: 1, includesMe: p.reactorId === state.currentUserId });
+                    m.reactions = list;
+                    renderMessages();
+                }
+                return;
+            }
+            if (p.type === 'REACTION_REMOVED') {
+                const m = state.messages.get(p.messageId);
+                if (m) {
+                    const list = (m.reactions || []).slice();
+                    const existing = list.find(r => r.emoji === p.emoji);
+                    if (existing) { existing.count = Math.max(0, existing.count - 1); if (p.reactorId === state.currentUserId) existing.includesMe = false; }
+                    m.reactions = list.filter(r => r.count > 0);
+                    renderMessages();
+                }
+                return;
+            }
+        };
+        state.ws.onclose = () => setConnection(false);
+        state.ws.onerror = () => log($('msgs'), 'WebSocket error', 'err');
+    });
+
+    $('disconnect').addEventListener('click', () => { if (state.ws) state.ws.close(); });
+
+    $('sub').addEventListener('click', () => {
+        const s = $('server').value.trim(), c = $('chan').value.trim();
+        if (!s || !c) return;
+        sendWs({ type: 'SUBSCRIBE', server: s, channel: c });
+    });
+
+    $('unsub').addEventListener('click', () => {
+        const s = $('server').value.trim(), c = $('chan').value.trim();
+        if (!s || !c) return;
+        sendWs({ type: 'UNSUBSCRIBE', server: s, channel: c });
+    });
+
+    $('sendchan').addEventListener('click', () => {
+        const s = $('server').value.trim(), c = $('chan').value.trim();
+        const content = $('chanmsg').value.trim();
+        if (!s || !c || !content) return;
+        const payload = { type: 'CHANNEL_MESSAGE', server: s, channel: c, content };
+        if (state.pendingAttachments.length > 0) {
+            payload.attachmentIds = state.pendingAttachments.map(a => a.id);
         }
+        sendWs(payload);
+        $('chanmsg').value = '';
+        // Don't clear pendingAttachments yet — we may want to reuse for next msg.
+        // Actually clear to avoid double-sending. Phase 5 keeps it simple: clear after send.
+        state.pendingAttachments = [];
+        $('att-status').textContent = '';
+    });
+}
 
-        function startHeartbeat() {
-            if (heartbeatTimer) clearInterval(heartbeatTimer);
-            heartbeatTimer = setInterval(() => {
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'HEARTBEAT' }));
-                }
-            }, HEARTBEAT_MS);
-        }
-
-        function sendWs(obj) {
-            if (!ws || ws.readyState !== WebSocket.OPEN) return;
-            ws.send(JSON.stringify(obj));
-        }
-
-        els.register.addEventListener('click', async () => {
-            try {
-                const r = await api('/auth/register', 'POST', {
-                    username: els.user.value.trim(),
-                    email: els.user.value.trim() + '@example.com',
-                    password: els.pass.value
-                });
-                jwt = r.token; currentUser = r.username;
-                els.token.textContent = 'token: ' + jwt.slice(0, 50) + '…';
-                setLoginState('logged-in', `logged in as ${r.username} (id=${r.id})`);
-            } catch (e) { setLoginState('logged-out', 'register failed: ' + e.message); }
-        });
-
-        els.login.addEventListener('click', async () => {
-            try {
-                const r = await api('/auth/login', 'POST', {
-                    username: els.user.value.trim(),
-                    password: els.pass.value
-                });
-                jwt = r.token; currentUser = r.username;
-                els.token.textContent = 'token: ' + jwt.slice(0, 50) + '…';
-                setLoginState('logged-in', `logged in as ${r.username} (id=${r.id})`);
-            } catch (e) { setLoginState('logged-out', 'login failed: ' + e.message); }
-        });
-
-        els.connect.addEventListener('click', () => {
-            if (!jwt) return;
-            ws = new WebSocket('ws://' + location.host + '/ws/chat');
-            ws.onopen = () => { sendWs({ type: 'AUTH', token: jwt }); startHeartbeat(); };
-            ws.onmessage = (ev) => {
-                let p; try { p = JSON.parse(ev.data); } catch { return; }
-                if (p.type === 'AUTHENTICATED') { setStatus(true); return; }
-                if (p.type === 'ERROR') {
-                    log(els.pres, 'err', p.content, 'err');
-                    return;
-                }
-                if (p.type === 'PRESENCE_UPDATED') {
-                    presence.set(p.username, p.status);
-                    renderPresence();
-                    log(els.pres, 'in', `presence: ${p.username} → ${p.status}`, 'pres');
-                    return;
-                }
-                if (p.type === 'SUBSCRIBED') {
-                    els.chanStatus.textContent = `subscribed to ${p.server}:${p.channel}`;
-                    els.chanStatus.className = 'status subscribed';
-                    els.sub.disabled = true; els.unsub.disabled = false;
-                    els.sub.dataset.subscribed = p.server + ':' + p.channel;
-                    els.sendChan.disabled = false;
-                    return;
-                }
-                if (p.type === 'UNSUBSCRIBED') {
-                    els.chanStatus.textContent = 'not subscribed';
-                    els.chanStatus.className = 'status not-subscribed';
-                    els.sub.disabled = false; els.unsub.disabled = true;
-                    els.sub.dataset.subscribed = '';
-                    els.sendChan.disabled = true;
-                    return;
-                }
-                if (p.type === 'HISTORY') {
-                    els.chanlog.innerHTML = '';
-                    (p.messages || []).forEach(m => log(els.chanlog, 'in', `[history id=${m.id}] ${m.from}: ${m.content}`, 'hist'));
-                    return;
-                }
-                if (p.type === 'PUBLISHED') {
-                    log(els.chanlog, 'in', `${p.from}: ${p.content}`);
-                    return;
-                }
-            };
-            ws.onclose = () => setStatus(false);
-            ws.onerror = () => { log(els.pres, 'err', 'WebSocket error', 'err'); };
-        });
-
-        els.disconnect.addEventListener('click', () => { if (ws) ws.close(); });
-
-        els.sub.addEventListener('click', () => {
-            const server = els.server.value.trim(), channel = els.chan.value.trim();
-            if (!server || !channel) return;
-            sendWs({ type: 'SUBSCRIBE', server, channel });
-        });
-
-        els.unsub.addEventListener('click', () => {
-            const server = els.server.value.trim(), channel = els.chan.value.trim();
-            if (!server || !channel) return;
-            sendWs({ type: 'UNSUBSCRIBE', server, channel });
-        });
-
-        els.sendChan.addEventListener('click', () => {
-            const server = els.server.value.trim(), channel = els.chan.value.trim();
-            const content = els.chanmsg.value.trim();
-            if (!server || !channel || !content) return;
-            sendWs({ type: 'CHANNEL_MESSAGE', server, channel, content });
-            log(els.chanlog, 'out', `me: ${content}`);
-            els.chanmsg.value = '';
-        });
-
-        els.chanmsg.addEventListener('keydown', e => { if (e.key === 'Enter') els.sendChan.click(); });
-    }
-
-    makeClient('a');
-    makeClient('b');
+buildPanel('a');
+buildPanel('b');
 </script>
 </body>
 </html>

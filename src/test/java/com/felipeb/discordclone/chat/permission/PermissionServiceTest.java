@@ -1,8 +1,11 @@
 package com.felipeb.discordclone.chat.permission;
 
+import com.felipeb.discordclone.chat.channel.Channel;
+import com.felipeb.discordclone.chat.channel.ChannelPermission;
 import com.felipeb.discordclone.server.Membership;
 import com.felipeb.discordclone.server.MembershipRepository;
 import com.felipeb.discordclone.server.Role;
+import com.felipeb.discordclone.server.Server;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -85,5 +88,59 @@ class PermissionServiceTest {
         when(memberships.findByUserIdAndServerId(1L, 10L)).thenReturn(Optional.of(m));
 
         assertThat(permissions.requireManageServer(1L, 10L).getRole()).isEqualTo(Role.OWNER);
+    }
+
+    // ---- channel-level write ----
+
+    @Test
+    void memberCanPostInReadWriteChannel() {
+        Server server = new Server("s1");
+        Channel channel = new Channel(server, "general", ChannelPermission.READ_WRITE);
+        Membership m = new Membership(null, server, Role.MEMBER);
+        when(memberships.findByUserIdAndServerId(1L, server.getId())).thenReturn(Optional.of(m));
+
+        assertThat(permissions.requireChannelWriteAccess(1L, channel).getRole()).isEqualTo(Role.MEMBER);
+    }
+
+    @Test
+    void memberCannotPostInReadOnlyChannel() {
+        Server server = new Server("s1");
+        Channel channel = new Channel(server, "announcements", ChannelPermission.READ_ONLY);
+        Membership m = new Membership(null, server, Role.MEMBER);
+        when(memberships.findByUserIdAndServerId(1L, server.getId())).thenReturn(Optional.of(m));
+
+        assertThatThrownBy(() -> permissions.requireChannelWriteAccess(1L, channel))
+                .isInstanceOf(PermissionDeniedException.class)
+                .hasMessageContaining("read-only");
+    }
+
+    @Test
+    void adminCanAlwaysPostInReadOnlyChannel() {
+        Server server = new Server("s1");
+        Channel channel = new Channel(server, "announcements", ChannelPermission.READ_ONLY);
+        Membership m = new Membership(null, server, Role.ADMIN);
+        when(memberships.findByUserIdAndServerId(1L, server.getId())).thenReturn(Optional.of(m));
+
+        assertThat(permissions.requireChannelWriteAccess(1L, channel).getRole()).isEqualTo(Role.ADMIN);
+    }
+
+    @Test
+    void ownerCanAlwaysPostInReadOnlyChannel() {
+        Server server = new Server("s1");
+        Channel channel = new Channel(server, "announcements", ChannelPermission.READ_ONLY);
+        Membership m = new Membership(null, server, Role.OWNER);
+        when(memberships.findByUserIdAndServerId(1L, server.getId())).thenReturn(Optional.of(m));
+
+        assertThat(permissions.requireChannelWriteAccess(1L, channel).getRole()).isEqualTo(Role.OWNER);
+    }
+
+    @Test
+    void nonMemberCannotPostEvenInReadWriteChannel() {
+        Server server = new Server("s1");
+        Channel channel = new Channel(server, "general", ChannelPermission.READ_WRITE);
+        when(memberships.findByUserIdAndServerId(99L, server.getId())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> permissions.requireChannelWriteAccess(99L, channel))
+                .isInstanceOf(PermissionDeniedException.class);
     }
 }

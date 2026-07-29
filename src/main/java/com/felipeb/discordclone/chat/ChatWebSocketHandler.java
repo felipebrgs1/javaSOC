@@ -13,11 +13,13 @@ import com.felipeb.discordclone.chat.channel.Channel;
 import com.felipeb.discordclone.chat.channel.ChannelNotFoundException;
 import com.felipeb.discordclone.chat.channel.ChannelService;
 import com.felipeb.discordclone.chat.channel.Message;
+import com.felipeb.discordclone.chat.channel.MessageNotFoundException;
 import com.felipeb.discordclone.chat.permission.PermissionDeniedException;
 import com.felipeb.discordclone.chat.permission.PermissionService;
 import com.felipeb.discordclone.chat.presence.PresenceService;
 import com.felipeb.discordclone.chat.session.SessionRegistry;
 import com.felipeb.discordclone.chat.subscription.ChannelSubscriptions;
+import com.felipeb.discordclone.server.Membership;
 import com.felipeb.discordclone.server.Server;
 import com.felipeb.discordclone.server.ServerRepository;
 import com.felipeb.discordclone.user.User;
@@ -32,16 +34,6 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import java.io.IOException;
 import java.util.List;
 
-/**
- * Phase 4 protocol — see Javadoc on each handler method. Notable additions:
- * <pre>
- *   // client -> server
- *   {"type":"HEARTBEAT"}                                   // no payload; resets idle timer
- *
- *   // server -> client (broadcast on a channel)
- *   {"type":"PRESENCE_UPDATED", "userId":1, "username":"alice", "status":"ONLINE"}
- * </pre>
- */
 @Component
 public class ChatWebSocketHandler extends TextWebSocketHandler {
 
@@ -100,9 +92,14 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 case SUBSCRIBE -> handleSubscribe(session, payload);
                 case UNSUBSCRIBE -> handleUnsubscribe(session, payload);
                 case CHANNEL_MESSAGE -> handleChannelMessage(session, payload);
+                case EDIT_MESSAGE -> handleEditMessage(session, payload);
+                case DELETE_MESSAGE -> handleDeleteMessage(session, payload);
+                case REACT -> handleToggleReaction(session, payload, true);
+                case UNREACT -> handleToggleReaction(session, payload, false);
                 default -> sendError(session, "Unsupported message type: " + payload.type());
             }
-        } catch (PermissionDeniedException | ChannelNotFoundException | IllegalArgumentException e) {
+        } catch (PermissionDeniedException | ChannelNotFoundException
+                 | MessageNotFoundException | IllegalArgumentException e) {
             sendError(session, e.getMessage());
         }
     }
@@ -142,8 +139,6 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    // ---------- HEARTBEAT (Phase 4) ----------
-
     private void handleHeartbeat(WebSocketSession session) {
         AuthedUser user = requireAuthed(session);
         if (user == null) return;
@@ -179,19 +174,15 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         permissions.requireReadAccess(user.userId(), server.getId());
         String channelKey = channelKey(server, channel);
 
-        // Snapshot pre-existing subscribers BEFORE adding self, so the
-        // presence service doesn't see self in the list (and so concurrent
-        // subscribes don't double-announce each other).
-        java.util.Collection<WebSocketSession> preExisting = subscriptions.subscribersOf(channelKey);
-        subscriptions.subscribe(channelKey, session);
+        java.util.Collection<WebSocketSession> preExisting =
+                subscriptions.subscribeAndGetPreExisting(channelKey, session);
 
         send(session, OutgoingMessage.subscribed(server.getName(), channel.getName()));
 
-        List<HistoryMessage.MessageView> views = channelService.recentViews(channel, HISTORY_LIMIT);
+        User perspective = userService.findById(user.userId()).orElseThrow();
+        List<HistoryMessage.MessageView> views = channelService.recentViews(channel, HISTORY_LIMIT, perspective);
         send(session, HistoryMessage.of(server.getName(), channel.getName(), views));
 
-        // Phase 4: announce presence to pre-existing subscribers, and snapshot
-        // their current status to the new subscriber.
         presence.onSubscribed(session, user.userId(), user.username(), channelKey, preExisting);
 
         log.info("User '{}' subscribed to '{}:{}' (history size={}, preExisting={})",
@@ -221,7 +212,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        permissions.requireWriteAccess(user.userId(), server.getId());
+        permissions.requireChannelWriteAccess(user.userId(), channel);
         String channelKey = channelKey(server, channel);
         if (!subscriptions.isSubscribed(channelKey, session)) {
             sendError(session, "You must SUBSCRIBE to '" + server.getName() + ":" + channel.getName() + "' before posting");
@@ -229,10 +220,76 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         }
         User author = userService.findById(user.userId())
                 .orElseThrow(() -> new IllegalStateException("Authenticated user no longer exists"));
-        Message saved = channelService.publish(channel, author, payload.content());
+        Message saved = channelService.publish(channel, author, payload.content(), payload.attachmentIds());
         broker.publishToChannel(channelKey,
                 OutgoingMessage.published(saved.getId(), author.getUsername(),
                         server.getName(), channel.getName(), saved.getContent(), saved.getCreatedAt()));
+    }
+
+    // ---------- Phase 5: edit / delete / react ----------
+
+    private void handleEditMessage(WebSocketSession session, ChatMessage payload) {
+        AuthedUser user = requireAuthed(session);
+        if (user == null) return;
+        if (payload.messageId() == null || payload.content() == null) {
+            sendError(session, "EDIT_MESSAGE requires 'messageId' and 'content'");
+            return;
+        }
+        ChannelService.MessageContext ctx = channelService.loadMessageContext(payload.messageId());
+        if (!ctx.message().getAuthor().getId().equals(user.userId())) {
+            throw new PermissionDeniedException("You can only edit your own messages");
+        }
+        Message updated = channelService.editContent(ctx, payload.content());
+        String channelKey = channelKey(ctx.server(), ctx.channel());
+        broker.publishToChannel(channelKey, OutgoingMessage.messageEdited(
+                updated.getId(), ctx.message().getAuthor().getUsername(),
+                ctx.server().getName(), ctx.channel().getName(),
+                updated.getContent(), updated.getEditedAt()));
+    }
+
+    private void handleDeleteMessage(WebSocketSession session, ChatMessage payload) {
+        AuthedUser user = requireAuthed(session);
+        if (user == null) return;
+        if (payload.messageId() == null) {
+            sendError(session, "DELETE_MESSAGE requires 'messageId'");
+            return;
+        }
+        ChannelService.MessageContext ctx = channelService.loadMessageContext(payload.messageId());
+        boolean isAuthor = ctx.message().getAuthor().getId().equals(user.userId());
+        if (!isAuthor) {
+            // ADMIN+ can also delete (moderation)
+            permissions.requireManageChannels(user.userId(), ctx.server().getId());
+        }
+        String channelKey = channelKey(ctx.server(), ctx.channel());
+        channelService.delete(payload.messageId());
+        broker.publishToChannel(channelKey, OutgoingMessage.messageDeleted(
+                payload.messageId(), ctx.server().getName(), ctx.channel().getName()));
+    }
+
+    private void handleToggleReaction(WebSocketSession session, ChatMessage payload, boolean add) {
+        AuthedUser user = requireAuthed(session);
+        if (user == null) return;
+        if (payload.messageId() == null || payload.emoji() == null || payload.emoji().isBlank()) {
+            sendError(session, (add ? "REACT" : "UNREACT") + " requires 'messageId' and 'emoji'");
+            return;
+        }
+        ChannelService.MessageContext ctx = channelService.loadMessageContext(payload.messageId());
+        User reactor = userService.findById(user.userId())
+                .orElseThrow(() -> new IllegalStateException("Authenticated user no longer exists"));
+
+        boolean changed = channelService.toggleReaction(payload.messageId(), reactor, payload.emoji(), add);
+        if (!changed) return; // idempotent no-op
+
+        String channelKey = channelKey(ctx.server(), ctx.channel());
+        if (add) {
+            broker.publishToChannel(channelKey, OutgoingMessage.reactionAdded(
+                    payload.messageId(), ctx.server().getName(), ctx.channel().getName(),
+                    user.userId(), user.username(), payload.emoji()));
+        } else {
+            broker.publishToChannel(channelKey, OutgoingMessage.reactionRemoved(
+                    payload.messageId(), ctx.server().getName(), ctx.channel().getName(),
+                    user.userId(), user.username(), payload.emoji()));
+        }
     }
 
     // ---------- helpers ----------

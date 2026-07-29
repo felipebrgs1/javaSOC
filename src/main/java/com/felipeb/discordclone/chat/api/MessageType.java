@@ -8,6 +8,10 @@ public enum MessageType {
     SUBSCRIBE,
     UNSUBSCRIBE,
     CHANNEL_MESSAGE,
+    EDIT_MESSAGE,
+    DELETE_MESSAGE,
+    REACT,
+    UNREACT,
     // server -> client
     AUTHENTICATED,
     DELIVERED,
@@ -16,5 +20,9 @@ public enum MessageType {
     UNSUBSCRIBED,
     HISTORY,
     PRESENCE_UPDATED,
+    MESSAGE_EDITED,
+    MESSAGE_DELETED,
+    REACTION_ADDED,
+    REACTION_REMOVED,
     ERROR
 }

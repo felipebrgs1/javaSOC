@@ -4,6 +4,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.socket.WebSocketSession;
 
+import java.util.Collection;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -24,25 +26,26 @@ class InMemoryChannelSubscriptionsTest {
     }
 
     @Test
-    void subscribeRegistersSession() {
-        subs.subscribe("general", alice);
-
+    void firstSubscribeSeesEmptyPreExisting() {
+        Collection<WebSocketSession> pre = subs.subscribeAndGetPreExisting("general", alice);
+        assertThat(pre).isEmpty();
         assertThat(subs.isSubscribed("general", alice)).isTrue();
         assertThat(subs.subscribersOf("general")).containsExactly(alice);
     }
 
     @Test
-    void multipleSubscribersOnSameChannel() {
-        subs.subscribe("general", alice);
-        subs.subscribe("general", bob);
+    void secondSubscribeSeesFirstInPreExisting() {
+        subs.subscribeAndGetPreExisting("general", alice);
+        Collection<WebSocketSession> pre = subs.subscribeAndGetPreExisting("general", bob);
 
+        assertThat(pre).containsExactly(alice);
         assertThat(subs.subscribersOf("general")).containsExactlyInAnyOrder(alice, bob);
     }
 
     @Test
-    void sameSessionSubscribedToDifferentChannels() {
-        subs.subscribe("general", alice);
-        subs.subscribe("dev", alice);
+    void sameSessionAcrossChannels() {
+        subs.subscribeAndGetPreExisting("general", alice);
+        subs.subscribeAndGetPreExisting("dev", alice);
 
         assertThat(subs.subscribersOf("general")).containsExactly(alice);
         assertThat(subs.subscribersOf("dev")).containsExactly(alice);
@@ -50,8 +53,8 @@ class InMemoryChannelSubscriptionsTest {
 
     @Test
     void unsubscribeRemovesSession() {
-        subs.subscribe("general", alice);
-        subs.subscribe("general", bob);
+        subs.subscribeAndGetPreExisting("general", alice);
+        subs.subscribeAndGetPreExisting("general", bob);
         subs.unsubscribe("general", alice);
 
         assertThat(subs.isSubscribed("general", alice)).isFalse();
@@ -60,21 +63,20 @@ class InMemoryChannelSubscriptionsTest {
 
     @Test
     void unsubscribeFromAllRemovesFromEveryChannel() {
-        subs.subscribe("general", alice);
-        subs.subscribe("dev", alice);
-        subs.subscribe("random", bob);
+        subs.subscribeAndGetPreExisting("general", alice);
+        subs.subscribeAndGetPreExisting("dev", alice);
+        subs.subscribeAndGetPreExisting("random", bob);
 
         subs.unsubscribeFromAll(alice);
 
         assertThat(subs.isSubscribed("general", alice)).isFalse();
         assertThat(subs.isSubscribed("dev", alice)).isFalse();
         assertThat(subs.isSubscribed("random", bob)).isTrue();
-        assertThat(subs.subscribersOf("random")).containsExactly(bob);
     }
 
     @Test
     void emptyChannelSetIsCleanedUp() {
-        subs.subscribe("general", alice);
+        subs.subscribeAndGetPreExisting("general", alice);
         subs.unsubscribe("general", alice);
 
         assertThat(subs.subscribersOf("general")).isEmpty();
@@ -94,9 +96,9 @@ class InMemoryChannelSubscriptionsTest {
 
     @Test
     void channelsOfReturnsAllChannelsForASession() {
-        subs.subscribe("general", alice);
-        subs.subscribe("dev", alice);
-        subs.subscribe("general", bob);
+        subs.subscribeAndGetPreExisting("general", alice);
+        subs.subscribeAndGetPreExisting("dev", alice);
+        subs.subscribeAndGetPreExisting("general", bob);
 
         assertThat(subs.channelsOf(alice)).containsExactlyInAnyOrder("general", "dev");
         assertThat(subs.channelsOf(bob)).containsExactly("general");

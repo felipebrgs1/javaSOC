@@ -1,5 +1,6 @@
-package com.felipeb.discordclone.chat.channel;
+package com.felipeb.discordclone.chat.reaction;
 
+import com.felipeb.discordclone.chat.channel.Message;
 import com.felipeb.discordclone.user.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,62 +11,60 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.time.Instant;
 import java.util.Objects;
 
 @Entity
-@Table(name = "messages")
-public class Message {
+@Table(
+    name = "reactions",
+    uniqueConstraints = @UniqueConstraint(
+        name = "uk_reaction_message_user_emoji",
+        columnNames = {"message_id", "user_id", "emoji"}
+    )
+)
+public class Reaction {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "channel_id", nullable = false)
-    private Channel channel;
+    @JoinColumn(name = "message_id", nullable = false)
+    private Message message;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "author_id", nullable = false)
-    private User author;
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
-    @Column(nullable = false, length = 4000)
-    private String content;
+    @Column(nullable = false, length = 32)
+    private String emoji;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    @Column(name = "edited_at")
-    private Instant editedAt;
-
-    protected Message() {
+    protected Reaction() {
         // JPA
     }
 
-    public Message(Channel channel, User author, String content) {
-        this.channel = channel;
-        this.author = author;
-        this.content = content;
+    public Reaction(Message message, User user, String emoji) {
+        this.message = message;
+        this.user = user;
+        this.emoji = emoji;
         this.createdAt = Instant.now();
     }
 
     public Long getId() { return id; }
-    public Channel getChannel() { return channel; }
-    public User getAuthor() { return author; }
-    public String getContent() { return content; }
+    public Message getMessage() { return message; }
+    public User getUser() { return user; }
+    public String getEmoji() { return emoji; }
     public Instant getCreatedAt() { return createdAt; }
-    public Instant getEditedAt() { return editedAt; }
-
-    public void editContent(String newContent) {
-        this.content = newContent;
-        this.editedAt = Instant.now();
-    }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof Message other)) return false;
+        if (!(o instanceof Reaction other)) return false;
         return id != null && id.equals(other.id);
     }
 
