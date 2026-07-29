@@ -7,6 +7,7 @@ public record ChatMessage(
         MessageType type,
         String from,
         String to,
+        String channel,
         String content
 ) {
 }

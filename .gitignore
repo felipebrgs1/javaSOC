@@ -1,0 +1,70 @@
+# --- Gradle ---
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# Gradle build outputs
+**/build/
+out/
+
+# Compiled class
+*.class
+
+# Package files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# --- Java ---
+# IDE-specific
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+nbproject/
+nbbuild/
+nbdist/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Logs
+*.log
+logs/
+spring.log
+
+# Spring Boot
+HELP.md
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local env / secrets
+application-local.yml
+application-local.properties
+.env
+.env.local
+*.pem
+*.key
+secrets/
+
+# H2 file db (when running in file mode)
+*.mv.db
+*.trace.db
+data/
+
+# Profiling / coverage
+*.hprof
+*.dump
+coverage/
+.nyc_output/

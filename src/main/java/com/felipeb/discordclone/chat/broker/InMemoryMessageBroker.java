@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.felipeb.discordclone.chat.api.OutgoingMessage;
 import com.felipeb.discordclone.chat.session.SessionRegistry;
+import com.felipeb.discordclone.chat.subscription.ChannelSubscriptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -18,10 +19,14 @@ public class InMemoryMessageBroker implements MessageBroker {
     private static final Logger log = LoggerFactory.getLogger(InMemoryMessageBroker.class);
 
     private final SessionRegistry sessions;
+    private final ChannelSubscriptions subscriptions;
     private final ObjectMapper mapper;
 
-    public InMemoryMessageBroker(SessionRegistry sessions, ObjectMapper mapper) {
+    public InMemoryMessageBroker(SessionRegistry sessions,
+                                 ChannelSubscriptions subscriptions,
+                                 ObjectMapper mapper) {
         this.sessions = sessions;
+        this.subscriptions = subscriptions;
         this.mapper = mapper;
     }
 
@@ -33,6 +38,11 @@ public class InMemoryMessageBroker implements MessageBroker {
     @Override
     public void broadcast(OutgoingMessage message) {
         sessions.all().forEach(session -> write(session, message));
+    }
+
+    @Override
+    public void publishToChannel(String channelId, OutgoingMessage message) {
+        subscriptions.subscribersOf(channelId).forEach(session -> write(session, message));
     }
 
     private void write(WebSocketSession session, OutgoingMessage message) {

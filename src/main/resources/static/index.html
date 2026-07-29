@@ -2,92 +2,153 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Discord Clone — Phase 1 (1:1 Chat PoC)</title>
+    <title>Discord Clone — Phase 2 (Channels + Persistence)</title>
     <style>
         * { box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 20px; background: #1e1f22; color: #dcddde; }
-        h1 { margin: 0 0 20px; font-size: 18px; }
+        h1 { margin: 0 0 4px; font-size: 18px; }
+        .subtitle { color: #b5bac1; font-size: 12px; margin-bottom: 20px; }
         .row { display: flex; gap: 20px; }
         .panel { flex: 1; background: #2b2d31; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; min-width: 0; }
         .panel h2 { margin: 0 0 12px; font-size: 14px; color: #b5bac1; text-transform: uppercase; letter-spacing: 0.5px; }
+        .section { border-top: 1px solid #1e1f22; padding-top: 12px; margin-top: 12px; }
+        .section:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+        .section h3 { margin: 0 0 8px; font-size: 12px; color: #949ba4; text-transform: uppercase; letter-spacing: 0.5px; }
         .status { font-size: 12px; margin-bottom: 10px; }
         .status.online { color: #23a55a; }
         .status.offline { color: #f23f43; }
+        .status.subscribed { color: #23a55a; }
+        .status.not-subscribed { color: #949ba4; }
         label { display: block; font-size: 12px; color: #b5bac1; margin: 8px 0 4px; }
         input, button { font: inherit; padding: 8px 10px; border-radius: 4px; border: 1px solid #1e1f22; background: #1e1f22; color: #dcddde; }
         input:focus { outline: 1px solid #5865f2; }
         button { background: #5865f2; border: none; color: white; cursor: pointer; padding: 8px 14px; }
         button:hover { background: #4752c4; }
         button:disabled { background: #4e5058; cursor: not-allowed; }
+        button.secondary { background: #4e5058; }
+        button.secondary:hover { background: #5d6068; }
         .row-form { display: flex; gap: 8px; margin-top: 8px; }
         .row-form input { flex: 1; }
-        .log { background: #1e1f22; border-radius: 4px; padding: 10px; height: 300px; overflow-y: auto; font-family: "SF Mono", Menlo, monospace; font-size: 12px; margin-top: 10px; }
+        .log { background: #1e1f22; border-radius: 4px; padding: 10px; height: 180px; overflow-y: auto; font-family: "SF Mono", Menlo, monospace; font-size: 12px; margin-top: 8px; }
         .log .in  { color: #23a55a; }
         .log .out { color: #5865f2; }
         .log .err { color: #f23f43; }
+        .log .hist { color: #f0b232; }
     </style>
 </head>
 <body>
-<h1>Discord Clone — Phase 1: 1:1 chat over WebSocket</h1>
+<h1>Discord Clone — Phase 2: channels with persistence</h1>
+<div class="subtitle">Pre-seeded channels: <b>general</b>, <b>random</b>, <b>dev</b>. H2 console at <a style="color:#5865f2" href="/h2-console">/h2-console</a> (jdbc:h2:mem:discordclone, user <b>sa</b>, no password).</div>
 <div class="row">
     <div class="panel" id="panel-a">
         <h2>User A</h2>
         <div class="status offline" id="status-a">disconnected</div>
         <label>User id</label>
-        <input id="user-a" value="alice">
         <div class="row-form">
+            <input id="user-a" value="alice">
             <button id="connect-a">Connect</button>
-            <button id="disconnect-a" disabled>Disconnect</button>
+            <button id="disconnect-a" class="secondary" disabled>Disconnect</button>
         </div>
-        <label>Send to</label>
-        <input id="to-a" value="bob">
-        <label>Message</label>
-        <div class="row-form">
-            <input id="msg-a" placeholder="Type a message…">
-            <button id="send-a" disabled>Send</button>
+
+        <div class="section">
+            <h3>Direct message (1:1)</h3>
+            <label>Send to</label>
+            <input id="to-a" value="bob">
+            <label>Message</label>
+            <div class="row-form">
+                <input id="msg-a" placeholder="Type a DM…">
+                <button id="send-a" disabled>Send</button>
+            </div>
+            <div class="log" id="log-a"></div>
         </div>
-        <div class="log" id="log-a"></div>
+
+        <div class="section">
+            <h3>Channel</h3>
+            <div class="status not-subscribed" id="chan-status-a">not subscribed</div>
+            <label>Channel</label>
+            <div class="row-form">
+                <input id="chan-a" value="general">
+                <button id="sub-a" disabled>Subscribe</button>
+                <button id="unsub-a" class="secondary" disabled>Unsubscribe</button>
+            </div>
+            <label>Message</label>
+            <div class="row-form">
+                <input id="chanmsg-a" placeholder="Type a channel message…">
+                <button id="sendchan-a" disabled>Send</button>
+            </div>
+            <div class="log" id="chanlog-a"></div>
+        </div>
     </div>
+
     <div class="panel" id="panel-b">
         <h2>User B</h2>
         <div class="status offline" id="status-b">disconnected</div>
         <label>User id</label>
-        <input id="user-b" value="bob">
         <div class="row-form">
+            <input id="user-b" value="bob">
             <button id="connect-b">Connect</button>
-            <button id="disconnect-b" disabled>Disconnect</button>
+            <button id="disconnect-b" class="secondary" disabled>Disconnect</button>
         </div>
-        <label>Send to</label>
-        <input id="to-b" value="alice">
-        <label>Message</label>
-        <div class="row-form">
-            <input id="msg-b" placeholder="Type a message…">
-            <button id="send-b" disabled>Send</button>
+
+        <div class="section">
+            <h3>Direct message (1:1)</h3>
+            <label>Send to</label>
+            <input id="to-b" value="alice">
+            <label>Message</label>
+            <div class="row-form">
+                <input id="msg-b" placeholder="Type a DM…">
+                <button id="send-b" disabled>Send</button>
+            </div>
+            <div class="log" id="log-b"></div>
         </div>
-        <div class="log" id="log-b"></div>
+
+        <div class="section">
+            <h3>Channel</h3>
+            <div class="status not-subscribed" id="chan-status-b">not subscribed</div>
+            <label>Channel</label>
+            <div class="row-form">
+                <input id="chan-b" value="general">
+                <button id="sub-b" disabled>Subscribe</button>
+                <button id="unsub-b" class="secondary" disabled>Unsubscribe</button>
+            </div>
+            <label>Message</label>
+            <div class="row-form">
+                <input id="chanmsg-b" placeholder="Type a channel message…">
+                <button id="sendchan-b" disabled>Send</button>
+            </div>
+            <div class="log" id="chanlog-b"></div>
+        </div>
     </div>
 </div>
 
 <script>
     function makeClient(side) {
-        const statusEl = document.getElementById('status-' + side);
-        const logEl    = document.getElementById('log-' + side);
-        const userEl   = document.getElementById('user-' + side);
-        const toEl     = document.getElementById('to-' + side);
-        const msgEl    = document.getElementById('msg-' + side);
-        const connectBtn    = document.getElementById('connect-' + side);
+        const statusEl    = document.getElementById('status-' + side);
+        const logEl       = document.getElementById('log-' + side);
+        const userEl      = document.getElementById('user-' + side);
+        const toEl        = document.getElementById('to-' + side);
+        const msgEl       = document.getElementById('msg-' + side);
+        const connectBtn  = document.getElementById('connect-' + side);
         const disconnectBtn = document.getElementById('disconnect-' + side);
-        const sendBtn       = document.getElementById('send-' + side);
+        const sendBtn     = document.getElementById('send-' + side);
+
+        const chanStatusEl = document.getElementById('chan-status-' + side);
+        const chanEl     = document.getElementById('chan-' + side);
+        const chanLogEl  = document.getElementById('chanlog-' + side);
+        const chanmsgEl  = document.getElementById('chanmsg-' + side);
+        const subBtn     = document.getElementById('sub-' + side);
+        const unsubBtn   = document.getElementById('unsub-' + side);
+        const sendChanBtn= document.getElementById('sendchan-' + side);
 
         let ws = null;
 
-        function log(direction, text, cls) {
+        function log(target, direction, text, cls) {
             const time = new Date().toLocaleTimeString();
             const div = document.createElement('div');
             div.className = cls || direction;
             div.textContent = `[${time}] ${direction === 'in' ? '←' : '→'} ${text}`;
-            logEl.appendChild(div);
-            logEl.scrollTop = logEl.scrollHeight;
+            target.appendChild(div);
+            target.scrollTop = target.scrollHeight;
         }
 
         function setStatus(connected) {
@@ -96,13 +157,22 @@
             connectBtn.disabled = connected;
             disconnectBtn.disabled = !connected;
             sendBtn.disabled = !connected;
+            subBtn.disabled = !connected;
+            sendChanBtn.disabled = !connected || !subBtn.dataset.subscribed;
+            if (!connected) {
+                unsubBtn.disabled = true;
+                subBtn.disabled = true;
+                sendChanBtn.disabled = true;
+                chanStatusEl.textContent = 'not subscribed';
+                chanStatusEl.className = 'status not-subscribed';
+                subBtn.dataset.subscribed = '';
+            }
         }
 
         function send(obj) {
             if (!ws || ws.readyState !== WebSocket.OPEN) return;
             const text = JSON.stringify(obj);
             ws.send(text);
-            log('out', text);
         }
 
         connectBtn.addEventListener('click', () => {
@@ -112,31 +182,90 @@
             ws.onopen = () => {
                 setStatus(true);
                 send({ type: 'CONNECT', from: userId });
+                log(logEl, 'out', '{"type":"CONNECT","from":"' + userId + '"}');
             };
             ws.onmessage = (ev) => {
                 let parsed;
                 try { parsed = JSON.parse(ev.data); } catch { return; }
-                log('in', ev.data, parsed.type === 'ERROR' ? 'err' : 'in');
+                if (parsed.type === 'ERROR') {
+                    log(chanLogEl, 'in', ev.data, 'err');
+                    log(logEl, 'in', ev.data, 'err');
+                    return;
+                }
+                if (parsed.type === 'HISTORY') {
+                    chanLogEl.innerHTML = '';
+                    (parsed.messages || []).forEach(m => {
+                        log(chanLogEl, 'in',
+                            `[history id=${m.id}] ${m.from}: ${m.content}`, 'hist');
+                    });
+                    return;
+                }
+                if (parsed.type === 'SUBSCRIBED') {
+                    chanStatusEl.textContent = 'subscribed to #' + parsed.channel;
+                    chanStatusEl.className = 'status subscribed';
+                    subBtn.disabled = true;
+                    unsubBtn.disabled = false;
+                    subBtn.dataset.subscribed = '1';
+                    sendChanBtn.disabled = !ws || ws.readyState !== WebSocket.OPEN;
+                    log(chanLogEl, 'in', ev.data, 'in');
+                    return;
+                }
+                if (parsed.type === 'UNSUBSCRIBED') {
+                    chanStatusEl.textContent = 'not subscribed';
+                    chanStatusEl.className = 'status not-subscribed';
+                    subBtn.disabled = false;
+                    unsubBtn.disabled = true;
+                    subBtn.dataset.subscribed = '';
+                    sendChanBtn.disabled = true;
+                    log(chanLogEl, 'in', ev.data, 'in');
+                    return;
+                }
+                if (parsed.channel) {
+                    log(chanLogEl, 'in', ev.data);
+                } else {
+                    log(logEl, 'in', ev.data);
+                }
             };
             ws.onclose = () => setStatus(false);
-            ws.onerror = () => log('err', 'WebSocket error', 'err');
+            ws.onerror = () => { log(logEl, 'err', 'WebSocket error', 'err'); };
         });
 
-        disconnectBtn.addEventListener('click', () => {
-            if (ws) ws.close();
-        });
+        disconnectBtn.addEventListener('click', () => { if (ws) ws.close(); });
 
         sendBtn.addEventListener('click', () => {
             const to = toEl.value.trim();
             const content = msgEl.value.trim();
             if (!to || !content) return;
             send({ type: 'DIRECT_MESSAGE', to, content });
+            log(logEl, 'out', JSON.stringify({type:'DIRECT_MESSAGE', to, content}));
             msgEl.value = '';
         });
 
-        msgEl.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') sendBtn.click();
+        subBtn.addEventListener('click', () => {
+            const channel = chanEl.value.trim();
+            if (!channel) return;
+            send({ type: 'SUBSCRIBE', channel });
+            log(chanLogEl, 'out', JSON.stringify({type:'SUBSCRIBE', channel}));
         });
+
+        unsubBtn.addEventListener('click', () => {
+            const channel = chanEl.value.trim();
+            if (!channel) return;
+            send({ type: 'UNSUBSCRIBE', channel });
+            log(chanLogEl, 'out', JSON.stringify({type:'UNSUBSCRIBE', channel}));
+        });
+
+        sendChanBtn.addEventListener('click', () => {
+            const channel = chanEl.value.trim();
+            const content = chanmsgEl.value.trim();
+            if (!channel || !content) return;
+            send({ type: 'CHANNEL_MESSAGE', channel, content });
+            log(chanLogEl, 'out', JSON.stringify({type:'CHANNEL_MESSAGE', channel, content}));
+            chanmsgEl.value = '';
+        });
+
+        msgEl.addEventListener('keydown', e => { if (e.key === 'Enter') sendBtn.click(); });
+        chanmsgEl.addEventListener('keydown', e => { if (e.key === 'Enter') sendChanBtn.click(); });
     }
 
     makeClient('a');
