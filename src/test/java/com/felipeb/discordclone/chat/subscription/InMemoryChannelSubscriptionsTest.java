@@ -92,6 +92,17 @@ class InMemoryChannelSubscriptionsTest {
         assertThat(subs.subscribersOf("ghost")).isEmpty();
     }
 
+    @Test
+    void channelsOfReturnsAllChannelsForASession() {
+        subs.subscribe("general", alice);
+        subs.subscribe("dev", alice);
+        subs.subscribe("general", bob);
+
+        assertThat(subs.channelsOf(alice)).containsExactlyInAnyOrder("general", "dev");
+        assertThat(subs.channelsOf(bob)).containsExactly("general");
+        assertThat(subs.channelsOf(carol)).isEmpty();
+    }
+
     private WebSocketSession open() {
         WebSocketSession s = mock(WebSocketSession.class);
         when(s.isOpen()).thenReturn(true);

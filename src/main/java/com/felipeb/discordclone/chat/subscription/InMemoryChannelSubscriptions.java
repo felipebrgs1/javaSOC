@@ -44,4 +44,12 @@ public class InMemoryChannelSubscriptions implements ChannelSubscriptions {
         Set<WebSocketSession> set = byChannel.get(channelId);
         return set != null ? set : Collections.emptySet();
     }
+
+    @Override
+    public Collection<String> channelsOf(WebSocketSession session) {
+        return byChannel.entrySet().stream()
+                .filter(e -> e.getValue().contains(session))
+                .map(Map.Entry::getKey)
+                .toList();
+    }
 }

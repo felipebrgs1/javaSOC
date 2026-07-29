@@ -3,6 +3,7 @@ package com.felipeb.discordclone.chat.api;
 public enum MessageType {
     // client -> server
     AUTH,
+    HEARTBEAT,
     DIRECT_MESSAGE,
     SUBSCRIBE,
     UNSUBSCRIBE,
@@ -14,5 +15,6 @@ public enum MessageType {
     SUBSCRIBED,
     UNSUBSCRIBED,
     HISTORY,
+    PRESENCE_UPDATED,
     ERROR
 }

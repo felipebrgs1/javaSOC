@@ -2,7 +2,6 @@ package com.felipeb.discordclone.chat.broker;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.felipeb.discordclone.chat.api.OutgoingMessage;
 import com.felipeb.discordclone.chat.session.SessionRegistry;
 import com.felipeb.discordclone.chat.subscription.ChannelSubscriptions;
 import org.slf4j.Logger;
@@ -31,21 +30,26 @@ public class InMemoryMessageBroker implements MessageBroker {
     }
 
     @Override
-    public void sendToUser(String userId, OutgoingMessage message) {
+    public void sendToUser(String userId, Object message) {
         sessions.findByUserId(userId).ifPresent(session -> write(session, message));
     }
 
     @Override
-    public void broadcast(OutgoingMessage message) {
+    public void broadcast(Object message) {
         sessions.all().forEach(session -> write(session, message));
     }
 
     @Override
-    public void publishToChannel(String channelId, OutgoingMessage message) {
+    public void publishToChannel(String channelId, Object message) {
         subscriptions.subscribersOf(channelId).forEach(session -> write(session, message));
     }
 
-    private void write(WebSocketSession session, OutgoingMessage message) {
+    @Override
+    public void sendToSession(WebSocketSession session, Object message) {
+        write(session, message);
+    }
+
+    private void write(WebSocketSession session, Object message) {
         // WebSocketSession is not thread-safe for concurrent sendMessage() calls;
         // synchronizing on the session prevents interleaved frame writes.
         synchronized (session) {
@@ -56,8 +60,10 @@ public class InMemoryMessageBroker implements MessageBroker {
                 session.sendMessage(new TextMessage(mapper.writeValueAsString(message)));
             } catch (JsonProcessingException e) {
                 log.error("Failed to serialize message for session {}", session.getId(), e);
-            } catch (IOException e) {
-                log.warn("Failed to send message to session {}: {}", session.getId(), e.getMessage());
+            } catch (IOException | IllegalStateException e) {
+                // IllegalStateException: session closed between isOpen() and sendMessage()
+                // (common when broadcasting to a session that just disconnected).
+                log.debug("Skipping send to closed session {}: {}", session.getId(), e.getMessage());
             }
         }
     }

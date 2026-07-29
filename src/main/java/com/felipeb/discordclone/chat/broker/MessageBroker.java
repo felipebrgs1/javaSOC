@@ -1,19 +1,23 @@
 package com.felipeb.discordclone.chat.broker;
 
-import com.felipeb.discordclone.chat.api.OutgoingMessage;
+import org.springframework.web.socket.WebSocketSession;
 
 /**
- * Routes outgoing messages to the right destination.
+ * Routes a JSON-serializable payload to the right destination(s).
  * <p>
- * Implementation-agnostic: Phase 1 in-memory, Phase 2 keeps it in-memory
- * but adds pub/sub on channels. A RabbitMQ/Kafka-backed implementation
- * can be dropped in later without touching the handler.
+ * The interface is intentionally payload-agnostic: {@link
+ * com.felipeb.discordclone.chat.api.OutgoingMessage}, {@link
+ * com.felipeb.discordclone.chat.api.PresenceUpdateMessage} or any future
+ * event type flow through the same routing primitives.
  */
 public interface MessageBroker {
 
-    void sendToUser(String userId, OutgoingMessage message);
+    void sendToUser(String userId, Object message);
 
-    void broadcast(OutgoingMessage message);
+    void broadcast(Object message);
 
-    void publishToChannel(String channelId, OutgoingMessage message);
+    void publishToChannel(String channelId, Object message);
+
+    /** Direct delivery to a single session. Used for per-recipient messages like initial presence snapshot. */
+    void sendToSession(WebSocketSession session, Object message);
 }

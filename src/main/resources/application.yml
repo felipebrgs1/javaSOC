@@ -41,6 +41,13 @@ app:
     default-server: discord-clone
     # Comma-separated; injected as List<String> via SpEL split.
     default-channels: general,random,dev
+  presence:
+    # How long without a heartbeat before the user is considered IDLE.
+    heartbeat-idle-seconds: 30
+    # How long without a heartbeat before the user is considered OFFLINE.
+    heartbeat-offline-seconds: 60
+    # How often the scheduler scans for timeouts (in addition to event-driven transitions).
+    check-interval-ms: 5000
 
 logging:
   level:

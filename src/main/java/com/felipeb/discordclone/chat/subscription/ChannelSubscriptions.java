@@ -19,4 +19,7 @@ public interface ChannelSubscriptions {
     boolean isSubscribed(String channelId, WebSocketSession session);
 
     Collection<WebSocketSession> subscribersOf(String channelId);
+
+    /** Returns the channels (by id, e.g. "server:channel") the session is currently in. */
+    Collection<String> channelsOf(WebSocketSession session);
 }

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Discord Clone — Phase 3 (JWT auth + servers + permissions)</title>
+    <title>Discord Clone — Phase 4 (presence: ONLINE/IDLE/OFFLINE via heartbeat)</title>
     <style>
         * { box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 20px; background: #1e1f22; color: #dcddde; }
@@ -21,6 +21,11 @@
         .status.not-subscribed { color: #949ba4; }
         .status.logged-in { color: #5865f2; }
         .status.logged-out { color: #949ba4; }
+        .presence-row { display: flex; gap: 8px; align-items: center; padding: 3px 0; font-size: 12px; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .dot.ONLINE  { background: #23a55a; }
+        .dot.IDLE    { background: #f0b232; }
+        .dot.OFFLINE { background: #80848e; }
         label { display: block; font-size: 12px; color: #b5bac1; margin: 8px 0 4px; }
         input, button { font: inherit; padding: 8px 10px; border-radius: 4px; border: 1px solid #1e1f22; background: #1e1f22; color: #dcddde; }
         input:focus { outline: 1px solid #5865f2; }
@@ -31,21 +36,21 @@
         button.secondary:hover { background: #5d6068; }
         .row-form { display: flex; gap: 8px; margin-top: 8px; }
         .row-form input { flex: 1; }
-        .log { background: #1e1f22; border-radius: 4px; padding: 10px; height: 150px; overflow-y: auto; font-family: "SF Mono", Menlo, monospace; font-size: 11px; margin-top: 8px; }
+        .log { background: #1e1f22; border-radius: 4px; padding: 10px; height: 140px; overflow-y: auto; font-family: "SF Mono", Menlo, monospace; font-size: 11px; margin-top: 8px; }
         .log .in  { color: #23a55a; }
         .log .out { color: #5865f2; }
         .log .err { color: #f23f43; }
         .log .hist { color: #f0b232; }
+        .log .pres { color: #b794f6; }
         .token { font-family: "SF Mono", Menlo, monospace; font-size: 10px; color: #5865f2; word-break: break-all; }
     </style>
 </head>
 <body>
-<h1>Discord Clone — Phase 3: JWT auth + servers + permissions</h1>
-<div class="subtitle">Default server <b>discord-clone</b> with channels <b>general</b>, <b>random</b>, <b>dev</b>. New users are auto-joined as MEMBER. H2 console at <a style="color:#5865f2" href="/h2-console">/h2-console</a>.</div>
+<h1>Discord Clone — Phase 4: presence (ONLINE/IDLE/OFFLINE) via heartbeat</h1>
+<div class="subtitle">Sends HEARTBEAT every 5s. Server marks you <b style="color:#23a55a">ONLINE</b> → <b style="color:#f0b232">IDLE</b> after 30s without heartbeat → <b style="color:#80848e">OFFLINE</b> after 60s (or on disconnect). State is broadcast to all channels you share with others.</div>
 <div class="row">
-    <div class="panel" id="panel-a">
+    <div class="panel">
         <h2>User A</h2>
-
         <div class="section">
             <h3>1. Account</h3>
             <div class="status logged-out" id="login-status-a">not logged in</div>
@@ -59,7 +64,6 @@
             </div>
             <div class="token" id="token-a"></div>
         </div>
-
         <div class="section">
             <h3>2. WebSocket</h3>
             <div class="status offline" id="status-a">disconnected</div>
@@ -68,21 +72,8 @@
                 <button id="disconnect-a" class="secondary" disabled>Disconnect</button>
             </div>
         </div>
-
         <div class="section">
-            <h3>3. Direct message (1:1)</h3>
-            <label>Send to</label>
-            <input id="to-a" value="bob">
-            <label>Message</label>
-            <div class="row-form">
-                <input id="msg-a" placeholder="Type a DM…">
-                <button id="send-a" disabled>Send</button>
-            </div>
-            <div class="log" id="log-a"></div>
-        </div>
-
-        <div class="section">
-            <h3>4. Channel</h3>
+            <h3>3. Channel</h3>
             <div class="status not-subscribed" id="chan-status-a">not subscribed</div>
             <div class="row-form">
                 <input id="server-a" value="discord-clone" placeholder="server">
@@ -92,7 +83,10 @@
                 <button id="sub-a" disabled>Subscribe</button>
                 <button id="unsub-a" class="secondary" disabled>Unsubscribe</button>
             </div>
-            <label>Message</label>
+            <div class="log" id="pres-a"></div>
+        </div>
+        <div class="section">
+            <h3>4. Channel chat</h3>
             <div class="row-form">
                 <input id="chanmsg-a" placeholder="Type a channel message…">
                 <button id="sendchan-a" disabled>Send</button>
@@ -101,9 +95,8 @@
         </div>
     </div>
 
-    <div class="panel" id="panel-b">
+    <div class="panel">
         <h2>User B</h2>
-
         <div class="section">
             <h3>1. Account</h3>
             <div class="status logged-out" id="login-status-b">not logged in</div>
@@ -117,7 +110,6 @@
             </div>
             <div class="token" id="token-b"></div>
         </div>
-
         <div class="section">
             <h3>2. WebSocket</h3>
             <div class="status offline" id="status-b">disconnected</div>
@@ -126,21 +118,8 @@
                 <button id="disconnect-b" class="secondary" disabled>Disconnect</button>
             </div>
         </div>
-
         <div class="section">
-            <h3>3. Direct message (1:1)</h3>
-            <label>Send to</label>
-            <input id="to-b" value="alice">
-            <label>Message</label>
-            <div class="row-form">
-                <input id="msg-b" placeholder="Type a DM…">
-                <button id="send-b" disabled>Send</button>
-            </div>
-            <div class="log" id="log-b"></div>
-        </div>
-
-        <div class="section">
-            <h3>4. Channel</h3>
+            <h3>3. Channel</h3>
             <div class="status not-subscribed" id="chan-status-b">not subscribed</div>
             <div class="row-form">
                 <input id="server-b" value="discord-clone" placeholder="server">
@@ -150,7 +129,10 @@
                 <button id="sub-b" disabled>Subscribe</button>
                 <button id="unsub-b" class="secondary" disabled>Unsubscribe</button>
             </div>
-            <label>Message</label>
+            <div class="log" id="pres-b"></div>
+        </div>
+        <div class="section">
+            <h3>4. Channel chat</h3>
             <div class="row-form">
                 <input id="chanmsg-b" placeholder="Type a channel message…">
                 <button id="sendchan-b" disabled>Send</button>
@@ -161,6 +143,8 @@
 </div>
 
 <script>
+    const HEARTBEAT_MS = 5000;
+
     async function api(path, method, body) {
         const res = await fetch(path, {
             method,
@@ -168,8 +152,7 @@
             body: body ? JSON.stringify(body) : undefined
         });
         const text = await res.text();
-        let data;
-        try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+        let data; try { data = text ? JSON.parse(text) : null; } catch { data = text; }
         if (!res.ok) {
             const msg = (data && data.detail) ? data.detail : (typeof data === 'string' ? data : res.statusText);
             throw new Error(msg);
@@ -178,34 +161,30 @@
     }
 
     function makeClient(side) {
-        const loginStatusEl = document.getElementById('login-status-' + side);
-        const userEl   = document.getElementById('user-' + side);
-        const passEl   = document.getElementById('pass-' + side);
-        const tokenEl  = document.getElementById('token-' + side);
-        const registerBtn = document.getElementById('register-' + side);
-        const loginBtn    = document.getElementById('login-' + side);
+        const els = {
+            loginStatus: document.getElementById('login-status-' + side),
+            user: document.getElementById('user-' + side),
+            pass: document.getElementById('pass-' + side),
+            register: document.getElementById('register-' + side),
+            login: document.getElementById('login-' + side),
+            token: document.getElementById('token-' + side),
+            status: document.getElementById('status-' + side),
+            connect: document.getElementById('connect-' + side),
+            disconnect: document.getElementById('disconnect-' + side),
+            chanStatus: document.getElementById('chan-status-' + side),
+            server: document.getElementById('server-' + side),
+            chan: document.getElementById('chan-' + side),
+            pres: document.getElementById('pres-' + side),
+            chanlog: document.getElementById('chanlog-' + side),
+            chanmsg: document.getElementById('chanmsg-' + side),
+            sub: document.getElementById('sub-' + side),
+            unsub: document.getElementById('unsub-' + side),
+            sendChan: document.getElementById('sendchan-' + side),
+        };
 
-        const statusEl = document.getElementById('status-' + side);
-        const connectBtn    = document.getElementById('connect-' + side);
-        const disconnectBtn = document.getElementById('disconnect-' + side);
-
-        const logEl    = document.getElementById('log-' + side);
-        const toEl     = document.getElementById('to-' + side);
-        const msgEl    = document.getElementById('msg-' + side);
-        const sendBtn  = document.getElementById('send-' + side);
-
-        const chanStatusEl = document.getElementById('chan-status-' + side);
-        const serverEl = document.getElementById('server-' + side);
-        const chanEl   = document.getElementById('chan-' + side);
-        const chanLogEl= document.getElementById('chanlog-' + side);
-        const chanmsgEl= document.getElementById('chanmsg-' + side);
-        const subBtn   = document.getElementById('sub-' + side);
-        const unsubBtn = document.getElementById('unsub-' + side);
-        const sendChanBtn = document.getElementById('sendchan-' + side);
-
-        let ws = null;
-        let jwt = null;
-        let currentUser = null;
+        let ws = null, jwt = null, currentUser = null, heartbeatTimer = null;
+        const presence = new Map();   // username -> status
+        const otherKey = side === 'a' ? 'b' : 'a';
 
         function log(target, direction, text, cls) {
             const time = new Date().toLocaleTimeString();
@@ -216,170 +195,159 @@
             target.scrollTop = target.scrollHeight;
         }
 
+        function renderPresence() {
+            els.pres.innerHTML = '';
+            for (const [name, status] of presence.entries()) {
+                const row = document.createElement('div');
+                row.className = 'presence-row';
+                const dot = document.createElement('span');
+                dot.className = 'dot ' + status;
+                row.appendChild(dot);
+                const label = document.createElement('span');
+                label.textContent = `${name}: ${status}`;
+                row.appendChild(label);
+                els.pres.appendChild(row);
+            }
+        }
+
         function setLoginState(state, label) {
-            loginStatusEl.textContent = label;
-            loginStatusEl.className = 'status ' + state;
+            els.loginStatus.textContent = label;
+            els.loginStatus.className = 'status ' + state;
             const logged = state === 'logged-in';
-            registerBtn.disabled = logged;
-            loginBtn.disabled = logged;
-            connectBtn.disabled = !logged || !jwt;
-            userEl.disabled = logged;
-            passEl.disabled = logged;
+            els.register.disabled = logged;
+            els.login.disabled = logged;
+            els.connect.disabled = !logged || !jwt;
+            els.user.disabled = logged;
+            els.pass.disabled = logged;
         }
 
         function setStatus(connected) {
-            statusEl.textContent = connected ? `connected as ${currentUser}` : 'disconnected';
-            statusEl.className = 'status ' + (connected ? 'online' : 'offline');
-            disconnectBtn.disabled = !connected;
-            sendBtn.disabled = !connected;
-            subBtn.disabled = !connected;
-            sendChanBtn.disabled = !connected || !subBtn.dataset.subscribed;
+            els.status.textContent = connected ? `connected as ${currentUser}` : 'disconnected';
+            els.status.className = 'status ' + (connected ? 'online' : 'offline');
+            els.disconnect.disabled = !connected;
+            els.sendChan.disabled = !connected || !els.sub.dataset.subscribed;
+            els.sub.disabled = !connected;
             if (!connected) {
-                unsubBtn.disabled = true;
-                chanStatusEl.textContent = 'not subscribed';
-                chanStatusEl.className = 'status not-subscribed';
-                subBtn.dataset.subscribed = '';
+                els.unsub.disabled = true;
+                els.chanStatus.textContent = 'not subscribed';
+                els.chanStatus.className = 'status not-subscribed';
+                els.sub.dataset.subscribed = '';
+                presence.clear();
+                renderPresence();
+                if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
             }
+        }
+
+        function startHeartbeat() {
+            if (heartbeatTimer) clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'HEARTBEAT' }));
+                }
+            }, HEARTBEAT_MS);
         }
 
         function sendWs(obj) {
             if (!ws || ws.readyState !== WebSocket.OPEN) return;
-            const text = JSON.stringify(obj);
-            ws.send(text);
+            ws.send(JSON.stringify(obj));
         }
 
-        registerBtn.addEventListener('click', async () => {
+        els.register.addEventListener('click', async () => {
             try {
-                const email = userEl.value.trim() + '@example.com';
                 const r = await api('/auth/register', 'POST', {
-                    username: userEl.value.trim(),
-                    email,
-                    password: passEl.value
+                    username: els.user.value.trim(),
+                    email: els.user.value.trim() + '@example.com',
+                    password: els.pass.value
                 });
-                jwt = r.token;
-                currentUser = r.username;
-                tokenEl.textContent = 'token: ' + jwt.slice(0, 50) + '…';
+                jwt = r.token; currentUser = r.username;
+                els.token.textContent = 'token: ' + jwt.slice(0, 50) + '…';
                 setLoginState('logged-in', `logged in as ${r.username} (id=${r.id})`);
-                log(logEl, 'out', `register ok: userId=${r.id}`);
-            } catch (e) {
-                setLoginState('logged-out', 'register failed: ' + e.message);
-                log(logEl, 'err', 'register: ' + e.message, 'err');
-            }
+            } catch (e) { setLoginState('logged-out', 'register failed: ' + e.message); }
         });
 
-        loginBtn.addEventListener('click', async () => {
+        els.login.addEventListener('click', async () => {
             try {
                 const r = await api('/auth/login', 'POST', {
-                    username: userEl.value.trim(),
-                    password: passEl.value
+                    username: els.user.value.trim(),
+                    password: els.pass.value
                 });
-                jwt = r.token;
-                currentUser = r.username;
-                tokenEl.textContent = 'token: ' + jwt.slice(0, 50) + '…';
+                jwt = r.token; currentUser = r.username;
+                els.token.textContent = 'token: ' + jwt.slice(0, 50) + '…';
                 setLoginState('logged-in', `logged in as ${r.username} (id=${r.id})`);
-                log(logEl, 'out', `login ok: userId=${r.id}`);
-            } catch (e) {
-                setLoginState('logged-out', 'login failed: ' + e.message);
-                log(logEl, 'err', 'login: ' + e.message, 'err');
-            }
+            } catch (e) { setLoginState('logged-out', 'login failed: ' + e.message); }
         });
 
-        connectBtn.addEventListener('click', () => {
+        els.connect.addEventListener('click', () => {
             if (!jwt) return;
             ws = new WebSocket('ws://' + location.host + '/ws/chat');
-            ws.onopen = () => {
-                sendWs({ type: 'AUTH', token: jwt });
-                log(logEl, 'out', '{"type":"AUTH","token":"…"}');
-            };
+            ws.onopen = () => { sendWs({ type: 'AUTH', token: jwt }); startHeartbeat(); };
             ws.onmessage = (ev) => {
-                let parsed;
-                try { parsed = JSON.parse(ev.data); } catch { return; }
-                if (parsed.type === 'AUTHENTICATED') {
-                    setStatus(true);
-                    log(logEl, 'in', ev.data, 'in');
+                let p; try { p = JSON.parse(ev.data); } catch { return; }
+                if (p.type === 'AUTHENTICATED') { setStatus(true); return; }
+                if (p.type === 'ERROR') {
+                    log(els.pres, 'err', p.content, 'err');
                     return;
                 }
-                if (parsed.type === 'ERROR') {
-                    log(chanLogEl, 'in', ev.data, 'err');
-                    log(logEl, 'in', ev.data, 'err');
+                if (p.type === 'PRESENCE_UPDATED') {
+                    presence.set(p.username, p.status);
+                    renderPresence();
+                    log(els.pres, 'in', `presence: ${p.username} → ${p.status}`, 'pres');
                     return;
                 }
-                if (parsed.type === 'HISTORY') {
-                    chanLogEl.innerHTML = '';
-                    (parsed.messages || []).forEach(m => {
-                        log(chanLogEl, 'in', `[history id=${m.id}] ${m.from}: ${m.content}`, 'hist');
-                    });
+                if (p.type === 'SUBSCRIBED') {
+                    els.chanStatus.textContent = `subscribed to ${p.server}:${p.channel}`;
+                    els.chanStatus.className = 'status subscribed';
+                    els.sub.disabled = true; els.unsub.disabled = false;
+                    els.sub.dataset.subscribed = p.server + ':' + p.channel;
+                    els.sendChan.disabled = false;
                     return;
                 }
-                if (parsed.type === 'SUBSCRIBED') {
-                    chanStatusEl.textContent = `subscribed to ${parsed.server}:${parsed.channel}`;
-                    chanStatusEl.className = 'status subscribed';
-                    subBtn.disabled = true;
-                    unsubBtn.disabled = false;
-                    subBtn.dataset.subscribed = parsed.server + ':' + parsed.channel;
-                    sendChanBtn.disabled = false;
-                    log(chanLogEl, 'in', ev.data, 'in');
+                if (p.type === 'UNSUBSCRIBED') {
+                    els.chanStatus.textContent = 'not subscribed';
+                    els.chanStatus.className = 'status not-subscribed';
+                    els.sub.disabled = false; els.unsub.disabled = true;
+                    els.sub.dataset.subscribed = '';
+                    els.sendChan.disabled = true;
                     return;
                 }
-                if (parsed.type === 'UNSUBSCRIBED') {
-                    chanStatusEl.textContent = 'not subscribed';
-                    chanStatusEl.className = 'status not-subscribed';
-                    subBtn.disabled = false;
-                    unsubBtn.disabled = true;
-                    subBtn.dataset.subscribed = '';
-                    sendChanBtn.disabled = true;
-                    log(chanLogEl, 'in', ev.data, 'in');
+                if (p.type === 'HISTORY') {
+                    els.chanlog.innerHTML = '';
+                    (p.messages || []).forEach(m => log(els.chanlog, 'in', `[history id=${m.id}] ${m.from}: ${m.content}`, 'hist'));
                     return;
                 }
-                if (parsed.server) {
-                    log(chanLogEl, 'in', ev.data);
-                } else {
-                    log(logEl, 'in', ev.data);
+                if (p.type === 'PUBLISHED') {
+                    log(els.chanlog, 'in', `${p.from}: ${p.content}`);
+                    return;
                 }
             };
             ws.onclose = () => setStatus(false);
-            ws.onerror = () => { log(logEl, 'err', 'WebSocket error', 'err'); };
+            ws.onerror = () => { log(els.pres, 'err', 'WebSocket error', 'err'); };
         });
 
-        disconnectBtn.addEventListener('click', () => { if (ws) ws.close(); });
+        els.disconnect.addEventListener('click', () => { if (ws) ws.close(); });
 
-        sendBtn.addEventListener('click', () => {
-            const to = toEl.value.trim();
-            const content = msgEl.value.trim();
-            if (!to || !content) return;
-            sendWs({ type: 'DIRECT_MESSAGE', to, content });
-            log(logEl, 'out', JSON.stringify({type:'DIRECT_MESSAGE', to, content}));
-            msgEl.value = '';
-        });
-
-        subBtn.addEventListener('click', () => {
-            const server = serverEl.value.trim();
-            const channel = chanEl.value.trim();
+        els.sub.addEventListener('click', () => {
+            const server = els.server.value.trim(), channel = els.chan.value.trim();
             if (!server || !channel) return;
             sendWs({ type: 'SUBSCRIBE', server, channel });
-            log(chanLogEl, 'out', JSON.stringify({type:'SUBSCRIBE', server, channel}));
         });
 
-        unsubBtn.addEventListener('click', () => {
-            const server = serverEl.value.trim();
-            const channel = chanEl.value.trim();
+        els.unsub.addEventListener('click', () => {
+            const server = els.server.value.trim(), channel = els.chan.value.trim();
             if (!server || !channel) return;
             sendWs({ type: 'UNSUBSCRIBE', server, channel });
-            log(chanLogEl, 'out', JSON.stringify({type:'UNSUBSCRIBE', server, channel}));
         });
 
-        sendChanBtn.addEventListener('click', () => {
-            const server = serverEl.value.trim();
-            const channel = chanEl.value.trim();
-            const content = chanmsgEl.value.trim();
+        els.sendChan.addEventListener('click', () => {
+            const server = els.server.value.trim(), channel = els.chan.value.trim();
+            const content = els.chanmsg.value.trim();
             if (!server || !channel || !content) return;
             sendWs({ type: 'CHANNEL_MESSAGE', server, channel, content });
-            log(chanLogEl, 'out', JSON.stringify({type:'CHANNEL_MESSAGE', server, channel, content}));
-            chanmsgEl.value = '';
+            log(els.chanlog, 'out', `me: ${content}`);
+            els.chanmsg.value = '';
         });
 
-        msgEl.addEventListener('keydown', e => { if (e.key === 'Enter') sendBtn.click(); });
-        chanmsgEl.addEventListener('keydown', e => { if (e.key === 'Enter') sendChanBtn.click(); });
+        els.chanmsg.addEventListener('keydown', e => { if (e.key === 'Enter') els.sendChan.click(); });
     }
 
     makeClient('a');

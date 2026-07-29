@@ -15,9 +15,9 @@ import com.felipeb.discordclone.chat.channel.ChannelService;
 import com.felipeb.discordclone.chat.channel.Message;
 import com.felipeb.discordclone.chat.permission.PermissionDeniedException;
 import com.felipeb.discordclone.chat.permission.PermissionService;
+import com.felipeb.discordclone.chat.presence.PresenceService;
 import com.felipeb.discordclone.chat.session.SessionRegistry;
 import com.felipeb.discordclone.chat.subscription.ChannelSubscriptions;
-import com.felipeb.discordclone.server.Membership;
 import com.felipeb.discordclone.server.Server;
 import com.felipeb.discordclone.server.ServerRepository;
 import com.felipeb.discordclone.user.User;
@@ -33,23 +33,13 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * Phase 3 protocol (JSON payloads; only fields marked required must be set):
+ * Phase 4 protocol — see Javadoc on each handler method. Notable additions:
  * <pre>
  *   // client -> server
- *   {"type":"AUTH",            "token":"<jwt>"}                                                    // required
- *   {"type":"DIRECT_MESSAGE",  "to":"bob",          "content":"hi"}                                // requires AUTH
- *   {"type":"SUBSCRIBE",       "server":"discord-clone", "channel":"general"}                     // requires AUTH + membership
- *   {"type":"UNSUBSCRIBE",     "server":"discord-clone", "channel":"general"}                     // requires AUTH
- *   {"type":"CHANNEL_MESSAGE", "server":"discord-clone", "channel":"general", "content":"hi"}     // requires AUTH + membership + subscription
+ *   {"type":"HEARTBEAT"}                                   // no payload; resets idle timer
  *
- *   // server -> client
- *   {"type":"AUTHENTICATED",   "from":"alice", "content":"userId=1",   "timestamp":"..."}
- *   {"type":"DELIVERED",       "from":"alice", "to":"bob",            "content":"hi",          "timestamp":"..."}
- *   {"type":"SUBSCRIBED",      "server":"discord-clone", "channel":"general",                    "timestamp":"..."}
- *   {"type":"UNSUBSCRIBED",    "server":"discord-clone", "channel":"general",                    "timestamp":"..."}
- *   {"type":"PUBLISHED",       "id":1, "from":"alice", "server":"discord-clone", "channel":"general", "content":"hi", "timestamp":"..."}
- *   {"type":"HISTORY",         "server":"discord-clone", "channel":"general", "messages":[{"id":1,"from":"alice","content":"hi","timestamp":"..."}]}
- *   {"type":"ERROR",           "content":"...", "timestamp":"..."}
+ *   // server -> client (broadcast on a channel)
+ *   {"type":"PRESENCE_UPDATED", "userId":1, "username":"alice", "status":"ONLINE"}
  * </pre>
  */
 @Component
@@ -69,6 +59,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final JwtService jwt;
     private final PermissionService permissions;
     private final MessageBroker broker;
+    private final PresenceService presence;
 
     public ChatWebSocketHandler(ObjectMapper mapper,
                                 SessionRegistry sessions,
@@ -78,7 +69,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                                 UserService userService,
                                 JwtService jwt,
                                 PermissionService permissions,
-                                MessageBroker broker) {
+                                MessageBroker broker,
+                                PresenceService presence) {
         this.mapper = mapper;
         this.sessions = sessions;
         this.subscriptions = subscriptions;
@@ -88,6 +80,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         this.jwt = jwt;
         this.permissions = permissions;
         this.broker = broker;
+        this.presence = presence;
     }
 
     @Override
@@ -102,6 +95,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         try {
             switch (payload.type()) {
                 case AUTH -> handleAuth(session, payload);
+                case HEARTBEAT -> handleHeartbeat(session);
                 case DIRECT_MESSAGE -> handleDirectMessage(session, payload);
                 case SUBSCRIBE -> handleSubscribe(session, payload);
                 case UNSUBSCRIBE -> handleUnsubscribe(session, payload);
@@ -113,7 +107,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    // ---------- AUTH (replaces Phase 1 CONNECT) ----------
+    // ---------- AUTH ----------
 
     private void handleAuth(WebSocketSession session, ChatMessage payload) {
         if (payload.token() == null || payload.token().isBlank()) {
@@ -131,6 +125,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             sessions.register(user.getUsername(), session);
 
             send(session, OutgoingMessage.authenticated(user.getId(), user.getUsername()));
+            presence.onAuthenticated(user.getId(), user.getUsername());
             log.info("User '{}' authenticated (session {})", user.getUsername(), session.getId());
         } catch (Exception e) {
             log.info("AUTH rejected for session {}: {}", session.getId(), e.getMessage());
@@ -147,7 +142,15 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    // ---------- 1:1 DM (unchanged from Phase 1) ----------
+    // ---------- HEARTBEAT (Phase 4) ----------
+
+    private void handleHeartbeat(WebSocketSession session) {
+        AuthedUser user = requireAuthed(session);
+        if (user == null) return;
+        presence.onHeartbeat(user.userId(), user.username());
+    }
+
+    // ---------- 1:1 DM ----------
 
     private void handleDirectMessage(WebSocketSession session, ChatMessage payload) {
         String sender = requireUser(session);
@@ -163,7 +166,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         broker.sendToUser(payload.to(), OutgoingMessage.delivered(sender, payload.to(), payload.content()));
     }
 
-    // ---------- Channels (now server-scoped + permission-checked) ----------
+    // ---------- Channels ----------
 
     private void handleSubscribe(WebSocketSession session, ChatMessage payload) {
         AuthedUser user = requireAuthed(session);
@@ -174,16 +177,25 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         if (channel == null) return;
 
         permissions.requireReadAccess(user.userId(), server.getId());
-        subscriptions.subscribe(channelKey(server, channel), session);
+        String channelKey = channelKey(server, channel);
+
+        // Snapshot pre-existing subscribers BEFORE adding self, so the
+        // presence service doesn't see self in the list (and so concurrent
+        // subscribes don't double-announce each other).
+        java.util.Collection<WebSocketSession> preExisting = subscriptions.subscribersOf(channelKey);
+        subscriptions.subscribe(channelKey, session);
 
         send(session, OutgoingMessage.subscribed(server.getName(), channel.getName()));
 
-        // recentViews() projects inside the @Transactional boundary so we
-        // don't touch lazy proxies outside the session.
         List<HistoryMessage.MessageView> views = channelService.recentViews(channel, HISTORY_LIMIT);
         send(session, HistoryMessage.of(server.getName(), channel.getName(), views));
-        log.info("User '{}' subscribed to '{}:{}' (history size={})",
-                user.username(), server.getName(), channel.getName(), views.size());
+
+        // Phase 4: announce presence to pre-existing subscribers, and snapshot
+        // their current status to the new subscriber.
+        presence.onSubscribed(session, user.userId(), user.username(), channelKey, preExisting);
+
+        log.info("User '{}' subscribed to '{}:{}' (history size={}, preExisting={})",
+                user.username(), server.getName(), channel.getName(), views.size(), preExisting.size());
     }
 
     private void handleUnsubscribe(WebSocketSession session, ChatMessage payload) {
@@ -210,14 +222,15 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         }
 
         permissions.requireWriteAccess(user.userId(), server.getId());
-        if (!subscriptions.isSubscribed(channelKey(server, channel), session)) {
+        String channelKey = channelKey(server, channel);
+        if (!subscriptions.isSubscribed(channelKey, session)) {
             sendError(session, "You must SUBSCRIBE to '" + server.getName() + ":" + channel.getName() + "' before posting");
             return;
         }
         User author = userService.findById(user.userId())
                 .orElseThrow(() -> new IllegalStateException("Authenticated user no longer exists"));
         Message saved = channelService.publish(channel, author, payload.content());
-        broker.publishToChannel(channelKey(server, channel),
+        broker.publishToChannel(channelKey,
                 OutgoingMessage.published(saved.getId(), author.getUsername(),
                         server.getName(), channel.getName(), saved.getContent(), saved.getCreatedAt()));
     }
@@ -255,7 +268,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             sendError(session, "Missing 'channel'");
             return null;
         }
-        return channelService.requireByServerAndName(server, name);  // throws ChannelNotFoundException
+        return channelService.requireByServerAndName(server, name);
     }
 
     private static String channelKey(Server server, Channel channel) {
@@ -283,6 +296,11 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+        Object idObj = session.getAttributes().get(USER_ID_ATTR);
+        Object nameObj = session.getAttributes().get(USERNAME_ATTR);
+        if (idObj instanceof Long userId && nameObj instanceof String username) {
+            presence.onDisconnected(session, userId, username);
+        }
         sessions.unregister(session);
         subscriptions.unsubscribeFromAll(session);
         log.info("WebSocket connection closed: {} ({})", session.getId(), status);
