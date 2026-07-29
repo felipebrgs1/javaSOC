@@ -30,6 +30,18 @@ spring:
 server:
   port: 8080
 
+app:
+  jwt:
+    # 32+ bytes required for HS256. Override via APP_JWT_SECRET env var in prod.
+    secret: ${APP_JWT_SECRET:dev-only-secret-do-not-use-in-prod-please-rotate-me-now-32b}
+    # 7 days
+    expiration-ms: 604800000
+  bootstrap:
+    # Default server every new user is auto-joined to as MEMBER.
+    default-server: discord-clone
+    # Comma-separated; injected as List<String> via SpEL split.
+    default-channels: general,random,dev
+
 logging:
   level:
     com.felipeb.discordclone: INFO

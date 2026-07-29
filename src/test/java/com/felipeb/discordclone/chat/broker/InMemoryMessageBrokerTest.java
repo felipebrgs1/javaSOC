@@ -82,9 +82,10 @@ class InMemoryMessageBrokerTest {
         WebSocketSession alice = openSession();
         WebSocketSession bob = openSession();
         WebSocketSession carol = openSession();
-        when(subscriptions.subscribersOf("general")).thenReturn(java.util.List.of(alice, bob));
+        when(subscriptions.subscribersOf("discord-clone:general")).thenReturn(java.util.List.of(alice, bob));
 
-        broker.publishToChannel("general", OutgoingMessage.published(1L, "alice", "general", "hi", java.time.Instant.now()));
+        broker.publishToChannel("discord-clone:general",
+                OutgoingMessage.published(1L, "alice", "discord-clone", "general", "hi", java.time.Instant.now()));
 
         verify(alice).sendMessage(any(TextMessage.class));
         verify(bob).sendMessage(any(TextMessage.class));
@@ -93,9 +94,10 @@ class InMemoryMessageBrokerTest {
 
     @Test
     void publishToUnknownChannelIsNoOp() throws Exception {
-        when(subscriptions.subscribersOf("ghost")).thenReturn(java.util.Collections.emptyList());
+        when(subscriptions.subscribersOf("discord-clone:ghost")).thenReturn(java.util.Collections.emptyList());
 
-        broker.publishToChannel("ghost", OutgoingMessage.published(1L, "a", "ghost", "hi", java.time.Instant.now()));
+        broker.publishToChannel("discord-clone:ghost",
+                OutgoingMessage.published(1L, "a", "discord-clone", "ghost", "hi", java.time.Instant.now()));
 
         // No sessions to verify, but the call must not throw and not touch the session registry
         verify(sessions, never()).all();

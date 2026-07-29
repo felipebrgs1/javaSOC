@@ -1,5 +1,6 @@
 package com.felipeb.discordclone.chat.channel;
 
+import com.felipeb.discordclone.user.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -25,8 +26,9 @@ public class Message {
     @JoinColumn(name = "channel_id", nullable = false)
     private Channel channel;
 
-    @Column(nullable = false, length = 64)
-    private String author;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "author_id", nullable = false)
+    private User author;
 
     @Column(nullable = false, length = 4000)
     private String content;
@@ -38,7 +40,7 @@ public class Message {
         // JPA
     }
 
-    public Message(Channel channel, String author, String content) {
+    public Message(Channel channel, User author, String content) {
         this.channel = channel;
         this.author = author;
         this.content = content;
@@ -47,7 +49,7 @@ public class Message {
 
     public Long getId() { return id; }
     public Channel getChannel() { return channel; }
-    public String getAuthor() { return author; }
+    public User getAuthor() { return author; }
     public String getContent() { return content; }
     public Instant getCreatedAt() { return createdAt; }
 

@@ -1,60 +1,46 @@
-package com.felipeb.discordclone.chat.channel;
+package com.felipeb.discordclone.server;
 
-import com.felipeb.discordclone.server.Server;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 
 import java.time.Instant;
 import java.util.Objects;
 
 @Entity
-@Table(
-    name = "channels",
-    uniqueConstraints = @UniqueConstraint(name = "uk_channel_server_name", columnNames = {"server_id", "name"})
-)
-public class Channel {
+@Table(name = "servers")
+public class Server {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "server_id", nullable = false)
-    private Server server;
-
-    @Column(nullable = false, length = 64)
+    @Column(nullable = false, unique = true, length = 64)
     private String name;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    protected Channel() {
+    protected Server() {
         // JPA
     }
 
-    public Channel(Server server, String name) {
-        this.server = server;
+    public Server(String name) {
         this.name = name;
         this.createdAt = Instant.now();
     }
 
     public Long getId() { return id; }
-    public Server getServer() { return server; }
     public String getName() { return name; }
     public Instant getCreatedAt() { return createdAt; }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof Channel other)) return false;
+        if (!(o instanceof Server other)) return false;
         return id != null && id.equals(other.id);
     }
 

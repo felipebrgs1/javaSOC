@@ -8,6 +8,7 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record HistoryMessage(
         MessageType type,
+        String server,
         String channel,
         List<MessageView> messages
 ) {
@@ -20,7 +21,7 @@ public record HistoryMessage(
     ) {
     }
 
-    public static HistoryMessage of(String channel, List<MessageView> messages) {
-        return new HistoryMessage(MessageType.HISTORY, channel, messages);
+    public static HistoryMessage of(String server, String channel, List<MessageView> messages) {
+        return new HistoryMessage(MessageType.HISTORY, server, channel, messages);
     }
 }

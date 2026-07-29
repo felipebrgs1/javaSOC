@@ -2,6 +2,8 @@ package com.felipeb.discordclone.chat;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.felipeb.discordclone.auth.JwtService;
+import com.felipeb.discordclone.auth.UserService;
 import com.felipeb.discordclone.chat.api.ChatMessage;
 import com.felipeb.discordclone.chat.api.HistoryMessage;
 import com.felipeb.discordclone.chat.api.MessageType;
@@ -11,8 +13,14 @@ import com.felipeb.discordclone.chat.channel.Channel;
 import com.felipeb.discordclone.chat.channel.ChannelNotFoundException;
 import com.felipeb.discordclone.chat.channel.ChannelService;
 import com.felipeb.discordclone.chat.channel.Message;
+import com.felipeb.discordclone.chat.permission.PermissionDeniedException;
+import com.felipeb.discordclone.chat.permission.PermissionService;
 import com.felipeb.discordclone.chat.session.SessionRegistry;
 import com.felipeb.discordclone.chat.subscription.ChannelSubscriptions;
+import com.felipeb.discordclone.server.Membership;
+import com.felipeb.discordclone.server.Server;
+import com.felipeb.discordclone.server.ServerRepository;
+import com.felipeb.discordclone.user.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -25,22 +33,23 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * Phase 2 protocol (JSON payloads, all fields are optional unless noted):
+ * Phase 3 protocol (JSON payloads; only fields marked required must be set):
  * <pre>
  *   // client -> server
- *   {"type":"CONNECT",          "from":"alice"}
- *   {"type":"DIRECT_MESSAGE",   "to":"bob",          "content":"hi"}
- *   {"type":"SUBSCRIBE",        "channel":"general"}
- *   {"type":"UNSUBSCRIBE",      "channel":"general"}
- *   {"type":"CHANNEL_MESSAGE",  "channel":"general", "content":"hi everyone"}
+ *   {"type":"AUTH",            "token":"<jwt>"}                                                    // required
+ *   {"type":"DIRECT_MESSAGE",  "to":"bob",          "content":"hi"}                                // requires AUTH
+ *   {"type":"SUBSCRIBE",       "server":"discord-clone", "channel":"general"}                     // requires AUTH + membership
+ *   {"type":"UNSUBSCRIBE",     "server":"discord-clone", "channel":"general"}                     // requires AUTH
+ *   {"type":"CHANNEL_MESSAGE", "server":"discord-clone", "channel":"general", "content":"hi"}     // requires AUTH + membership + subscription
  *
  *   // server -> client
- *   {"type":"DELIVERED",    "from":"alice", "to":"bob",          "content":"hi",          "timestamp":"..."}
- *   {"type":"PUBLISHED",    "id":1, "from":"alice", "channel":"general", "content":"hi",  "timestamp":"..."}
- *   {"type":"SUBSCRIBED",   "channel":"general", "timestamp":"..."}
- *   {"type":"UNSUBSCRIBED", "channel":"general", "timestamp":"..."}
- *   {"type":"HISTORY",      "channel":"general", "messages":[{"id":1,"from":"alice","content":"hi","timestamp":"..."}]}
- *   {"type":"ERROR",        "content":"..."}
+ *   {"type":"AUTHENTICATED",   "from":"alice", "content":"userId=1",   "timestamp":"..."}
+ *   {"type":"DELIVERED",       "from":"alice", "to":"bob",            "content":"hi",          "timestamp":"..."}
+ *   {"type":"SUBSCRIBED",      "server":"discord-clone", "channel":"general",                    "timestamp":"..."}
+ *   {"type":"UNSUBSCRIBED",    "server":"discord-clone", "channel":"general",                    "timestamp":"..."}
+ *   {"type":"PUBLISHED",       "id":1, "from":"alice", "server":"discord-clone", "channel":"general", "content":"hi", "timestamp":"..."}
+ *   {"type":"HISTORY",         "server":"discord-clone", "channel":"general", "messages":[{"id":1,"from":"alice","content":"hi","timestamp":"..."}]}
+ *   {"type":"ERROR",           "content":"...", "timestamp":"..."}
  * </pre>
  */
 @Component
@@ -48,23 +57,36 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ChatWebSocketHandler.class);
     private static final String USER_ID_ATTR = "userId";
+    private static final String USERNAME_ATTR = "username";
     private static final int HISTORY_LIMIT = 50;
 
     private final ObjectMapper mapper;
     private final SessionRegistry sessions;
     private final ChannelSubscriptions subscriptions;
     private final ChannelService channelService;
+    private final ServerRepository servers;
+    private final UserService userService;
+    private final JwtService jwt;
+    private final PermissionService permissions;
     private final MessageBroker broker;
 
     public ChatWebSocketHandler(ObjectMapper mapper,
                                 SessionRegistry sessions,
                                 ChannelSubscriptions subscriptions,
                                 ChannelService channelService,
+                                ServerRepository servers,
+                                UserService userService,
+                                JwtService jwt,
+                                PermissionService permissions,
                                 MessageBroker broker) {
         this.mapper = mapper;
         this.sessions = sessions;
         this.subscriptions = subscriptions;
         this.channelService = channelService;
+        this.servers = servers;
+        this.userService = userService;
+        this.jwt = jwt;
+        this.permissions = permissions;
         this.broker = broker;
     }
 
@@ -79,29 +101,53 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         try {
             switch (payload.type()) {
-                case CONNECT -> handleConnect(session, payload);
+                case AUTH -> handleAuth(session, payload);
                 case DIRECT_MESSAGE -> handleDirectMessage(session, payload);
                 case SUBSCRIBE -> handleSubscribe(session, payload);
                 case UNSUBSCRIBE -> handleUnsubscribe(session, payload);
                 case CHANNEL_MESSAGE -> handleChannelMessage(session, payload);
                 default -> sendError(session, "Unsupported message type: " + payload.type());
             }
-        } catch (ChannelNotFoundException e) {
+        } catch (PermissionDeniedException | ChannelNotFoundException | IllegalArgumentException e) {
             sendError(session, e.getMessage());
         }
     }
 
-    // ---------- Phase 1: connection + 1:1 DM ----------
+    // ---------- AUTH (replaces Phase 1 CONNECT) ----------
 
-    private void handleConnect(WebSocketSession session, ChatMessage payload) {
-        if (payload.from() == null || payload.from().isBlank()) {
-            sendError(session, "CONNECT requires 'from' (userId)");
+    private void handleAuth(WebSocketSession session, ChatMessage payload) {
+        if (payload.token() == null || payload.token().isBlank()) {
+            sendError(session, "AUTH requires 'token'");
+            closeAsUnauthorized(session);
             return;
         }
-        session.getAttributes().put(USER_ID_ATTR, payload.from());
-        sessions.register(payload.from(), session);
-        log.info("User '{}' connected (session {})", payload.from(), session.getId());
+        try {
+            JwtService.AuthenticatedUser auth = jwt.parse(payload.token());
+            User user = userService.findById(auth.userId()).orElseThrow(() ->
+                    new IllegalStateException("Token subject does not match a user"));
+
+            session.getAttributes().put(USER_ID_ATTR, user.getId());
+            session.getAttributes().put(USERNAME_ATTR, user.getUsername());
+            sessions.register(user.getUsername(), session);
+
+            send(session, OutgoingMessage.authenticated(user.getId(), user.getUsername()));
+            log.info("User '{}' authenticated (session {})", user.getUsername(), session.getId());
+        } catch (Exception e) {
+            log.info("AUTH rejected for session {}: {}", session.getId(), e.getMessage());
+            sendError(session, "Invalid token");
+            closeAsUnauthorized(session);
+        }
     }
+
+    private void closeAsUnauthorized(WebSocketSession session) {
+        try {
+            session.close(CloseStatus.NOT_ACCEPTABLE);
+        } catch (IOException ignored) {
+            // best-effort
+        }
+    }
+
+    // ---------- 1:1 DM (unchanged from Phase 1) ----------
 
     private void handleDirectMessage(WebSocketSession session, ChatMessage payload) {
         String sender = requireUser(session);
@@ -117,66 +163,103 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         broker.sendToUser(payload.to(), OutgoingMessage.delivered(sender, payload.to(), payload.content()));
     }
 
-    // ---------- Phase 2: channels (pub/sub) ----------
+    // ---------- Channels (now server-scoped + permission-checked) ----------
 
     private void handleSubscribe(WebSocketSession session, ChatMessage payload) {
-        String user = requireUser(session);
+        AuthedUser user = requireAuthed(session);
         if (user == null) return;
-        if (payload.channel() == null || payload.channel().isBlank()) {
-            sendError(session, "SUBSCRIBE requires 'channel'");
-            return;
-        }
-        Channel channel = channelService.requireByName(payload.channel());
-        subscriptions.subscribe(channel.getName(), session);
+        Server server = requireServer(session, payload.server());
+        if (server == null) return;
+        Channel channel = resolveChannel(session, server, payload.channel());
+        if (channel == null) return;
 
-        send(session, OutgoingMessage.subscribed(channel.getName()));
+        permissions.requireReadAccess(user.userId(), server.getId());
+        subscriptions.subscribe(channelKey(server, channel), session);
 
-        List<Message> history = channelService.recent(channel, HISTORY_LIMIT);
-        List<HistoryMessage.MessageView> views = history.stream()
-                .map(m -> new HistoryMessage.MessageView(
-                        m.getId(), m.getAuthor(), m.getContent(), m.getCreatedAt()))
-                .toList();
-        send(session, HistoryMessage.of(channel.getName(), views));
-        log.info("User '{}' subscribed to '{}' (history size={})", user, channel.getName(), views.size());
+        send(session, OutgoingMessage.subscribed(server.getName(), channel.getName()));
+
+        // recentViews() projects inside the @Transactional boundary so we
+        // don't touch lazy proxies outside the session.
+        List<HistoryMessage.MessageView> views = channelService.recentViews(channel, HISTORY_LIMIT);
+        send(session, HistoryMessage.of(server.getName(), channel.getName(), views));
+        log.info("User '{}' subscribed to '{}:{}' (history size={})",
+                user.username(), server.getName(), channel.getName(), views.size());
     }
 
     private void handleUnsubscribe(WebSocketSession session, ChatMessage payload) {
-        if (requireUser(session) == null) return;
-        if (payload.channel() == null || payload.channel().isBlank()) {
-            sendError(session, "UNSUBSCRIBE requires 'channel'");
-            return;
-        }
-        subscriptions.unsubscribe(payload.channel(), session);
-        send(session, OutgoingMessage.unsubscribed(payload.channel()));
+        AuthedUser user = requireAuthed(session);
+        if (user == null) return;
+        Server server = requireServer(session, payload.server());
+        if (server == null) return;
+        Channel channel = resolveChannel(session, server, payload.channel());
+        if (channel == null) return;
+        subscriptions.unsubscribe(channelKey(server, channel), session);
+        send(session, OutgoingMessage.unsubscribed(server.getName(), channel.getName()));
     }
 
     private void handleChannelMessage(WebSocketSession session, ChatMessage payload) {
-        String sender = requireUser(session);
-        if (sender == null) return;
-        if (payload.channel() == null || payload.content() == null) {
-            sendError(session, "CHANNEL_MESSAGE requires 'channel' and 'content'");
+        AuthedUser user = requireAuthed(session);
+        if (user == null) return;
+        Server server = requireServer(session, payload.server());
+        if (server == null) return;
+        Channel channel = resolveChannel(session, server, payload.channel());
+        if (channel == null) return;
+        if (payload.content() == null) {
+            sendError(session, "CHANNEL_MESSAGE requires 'content'");
             return;
         }
-        Channel channel = channelService.requireByName(payload.channel());
-        if (!subscriptions.isSubscribed(channel.getName(), session)) {
-            sendError(session, "You must SUBSCRIBE to '" + channel.getName() + "' before posting");
+
+        permissions.requireWriteAccess(user.userId(), server.getId());
+        if (!subscriptions.isSubscribed(channelKey(server, channel), session)) {
+            sendError(session, "You must SUBSCRIBE to '" + server.getName() + ":" + channel.getName() + "' before posting");
             return;
         }
-        Message saved = channelService.publish(channel.getName(), sender, payload.content());
-        broker.publishToChannel(channel.getName(),
-                OutgoingMessage.published(saved.getId(), sender, channel.getName(),
-                        saved.getContent(), saved.getCreatedAt()));
+        User author = userService.findById(user.userId())
+                .orElseThrow(() -> new IllegalStateException("Authenticated user no longer exists"));
+        Message saved = channelService.publish(channel, author, payload.content());
+        broker.publishToChannel(channelKey(server, channel),
+                OutgoingMessage.published(saved.getId(), author.getUsername(),
+                        server.getName(), channel.getName(), saved.getContent(), saved.getCreatedAt()));
     }
 
     // ---------- helpers ----------
 
-    private String requireUser(WebSocketSession session) {
-        Object bound = session.getAttributes().get(USER_ID_ATTR);
-        if (bound instanceof String s) {
-            return s;
+    private record AuthedUser(Long userId, String username) {}
+
+    private AuthedUser requireAuthed(WebSocketSession session) {
+        Object id = session.getAttributes().get(USER_ID_ATTR);
+        Object name = session.getAttributes().get(USERNAME_ATTR);
+        if (id instanceof Long userId && name instanceof String username) {
+            return new AuthedUser(userId, username);
         }
-        sendError(session, "You must CONNECT before sending messages");
+        sendError(session, "You must AUTH before sending messages");
         return null;
+    }
+
+    private String requireUser(WebSocketSession session) {
+        AuthedUser u = requireAuthed(session);
+        return u == null ? null : u.username();
+    }
+
+    private Server requireServer(WebSocketSession session, String name) {
+        if (name == null || name.isBlank()) {
+            sendError(session, "Missing 'server'");
+            return null;
+        }
+        return servers.findByName(name).orElseThrow(() ->
+                new IllegalArgumentException("Server not found: " + name));
+    }
+
+    private Channel resolveChannel(WebSocketSession session, Server server, String name) {
+        if (name == null || name.isBlank()) {
+            sendError(session, "Missing 'channel'");
+            return null;
+        }
+        return channelService.requireByServerAndName(server, name);  // throws ChannelNotFoundException
+    }
+
+    private static String channelKey(Server server, Channel channel) {
+        return server.getName() + ":" + channel.getName();
     }
 
     private void send(WebSocketSession session, Object payload) {

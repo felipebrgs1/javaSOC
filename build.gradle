@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'com.felipeb'
-version = '0.2.0'
+version = '0.3.0'
 
 java {
     toolchain {
@@ -22,6 +22,14 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+
+    // BCrypt password hashing (no full Spring Security, just crypto primitives)
+    implementation 'org.springframework.security:spring-security-crypto'
+
+    // JWT (HS256). jjwt-api at compile time, impl+jackson at runtime.
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 
     runtimeOnly 'com.h2database:h2'
     runtimeOnly 'org.postgresql:postgresql'

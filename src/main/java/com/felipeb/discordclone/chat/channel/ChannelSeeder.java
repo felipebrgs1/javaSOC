@@ -1,17 +1,12 @@
 package com.felipeb.discordclone.chat.channel;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.boot.CommandLineRunner;
+import com.felipeb.discordclone.server.Server;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 @Component
-public class ChannelSeeder implements CommandLineRunner {
-
-    private static final Logger log = LoggerFactory.getLogger(ChannelSeeder.class);
-    private static final List<String> DEFAULT_CHANNELS = List.of("general", "random", "dev");
+public class ChannelSeeder {
 
     private final ChannelRepository channels;
 
@@ -19,12 +14,11 @@ public class ChannelSeeder implements CommandLineRunner {
         this.channels = channels;
     }
 
-    @Override
-    public void run(String... args) {
-        DEFAULT_CHANNELS.stream()
-                .filter(name -> !channels.existsByName(name))
-                .map(Channel::new)
-                .forEach(channels::save);
-        log.info("Seeded channels: {}", channels.findAll());
+    public void seedDefaults(Server server, List<String> names) {
+        for (String name : names) {
+            if (!channels.existsByServerAndName(server, name)) {
+                channels.save(new Channel(server, name));
+            }
+        }
     }
 }

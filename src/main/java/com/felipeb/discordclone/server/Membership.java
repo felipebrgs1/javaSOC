@@ -1,8 +1,10 @@
-package com.felipeb.discordclone.chat.channel;
+package com.felipeb.discordclone.server;
 
-import com.felipeb.discordclone.server.Server;
+import com.felipeb.discordclone.user.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -17,44 +19,51 @@ import java.util.Objects;
 
 @Entity
 @Table(
-    name = "channels",
-    uniqueConstraints = @UniqueConstraint(name = "uk_channel_server_name", columnNames = {"server_id", "name"})
+    name = "memberships",
+    uniqueConstraints = @UniqueConstraint(name = "uk_membership_user_server", columnNames = {"user_id", "server_id"})
 )
-public class Channel {
+public class Membership {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "server_id", nullable = false)
     private Server server;
 
-    @Column(nullable = false, length = 64)
-    private String name;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private Role role;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
+    @Column(name = "joined_at", nullable = false, updatable = false)
+    private Instant joinedAt;
 
-    protected Channel() {
+    protected Membership() {
         // JPA
     }
 
-    public Channel(Server server, String name) {
+    public Membership(User user, Server server, Role role) {
+        this.user = user;
         this.server = server;
-        this.name = name;
-        this.createdAt = Instant.now();
+        this.role = role;
+        this.joinedAt = Instant.now();
     }
 
     public Long getId() { return id; }
+    public User getUser() { return user; }
     public Server getServer() { return server; }
-    public String getName() { return name; }
-    public Instant getCreatedAt() { return createdAt; }
+    public Role getRole() { return role; }
+    public Instant getJoinedAt() { return joinedAt; }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof Channel other)) return false;
+        if (!(o instanceof Membership other)) return false;
         return id != null && id.equals(other.id);
     }
 
