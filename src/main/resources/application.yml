@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: discord-clone
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8080
+
+logging:
+  level:
+    com.felipeb.discordclone: INFO
+    org.springframework.web.socket: INFO
