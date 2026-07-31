@@ -34,21 +34,23 @@ services:
     volumes:
       - uploads:/app/uploads
     ports:
-      # Exposto para clientes desktop/mobile conectarem direto na VPS
+      # Exposto para clientes desktop/mobile conectarem direto na VPS.
+      # Se preferir expor só via nginx/Traefik, remova esta linha.
       - "8081:8080"
 
   web:
     build:
       context: ./javasoc_app
       args:
-        # URL pública do servidor (ex: http://IP_DA_VPS). Os apps mobile/desktop
-        # devem usar http://IP_DA_VPS:8080 na tela de login.
+        # URL pública do app web (origem do navegador). Precisa bater com a
+        # porta publicada abaixo: http://IP_DO_SERVIDOR:8082
         API_BASE_URL: ${PUBLIC_URL:-http://localhost}
     restart: unless-stopped
     depends_on:
       - backend
+    # Em vez de publicar a 80 (conflita com Traefik do Dokploy), usa porta livre.
     ports:
-      - "80:80"
+      - "8082:80"
 
 volumes:
   pgdata:
