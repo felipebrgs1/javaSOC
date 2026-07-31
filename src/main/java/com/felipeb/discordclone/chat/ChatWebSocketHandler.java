@@ -12,6 +12,7 @@ import com.felipeb.discordclone.chat.broker.MessageBroker;
 import com.felipeb.discordclone.chat.channel.Channel;
 import com.felipeb.discordclone.chat.channel.ChannelNotFoundException;
 import com.felipeb.discordclone.chat.channel.ChannelService;
+import com.felipeb.discordclone.chat.channel.ChannelType;
 import com.felipeb.discordclone.chat.channel.Message;
 import com.felipeb.discordclone.chat.channel.MessageNotFoundException;
 import com.felipeb.discordclone.chat.permission.PermissionDeniedException;
@@ -23,6 +24,7 @@ import com.felipeb.discordclone.server.Membership;
 import com.felipeb.discordclone.server.Server;
 import com.felipeb.discordclone.server.ServerRepository;
 import com.felipeb.discordclone.user.User;
+import com.felipeb.discordclone.webrtc.VoiceSignalingHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -38,8 +40,8 @@ import java.util.List;
 public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ChatWebSocketHandler.class);
-    private static final String USER_ID_ATTR = "userId";
-    private static final String USERNAME_ATTR = "username";
+    public static final String USER_ID_ATTR = "userId";
+    public static final String USERNAME_ATTR = "username";
     private static final int HISTORY_LIMIT = 50;
 
     private final ObjectMapper mapper;
@@ -52,6 +54,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final PermissionService permissions;
     private final MessageBroker broker;
     private final PresenceService presence;
+    private final VoiceSignalingHandler voice;
 
     public ChatWebSocketHandler(ObjectMapper mapper,
                                 SessionRegistry sessions,
@@ -62,7 +65,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                                 JwtService jwt,
                                 PermissionService permissions,
                                 MessageBroker broker,
-                                PresenceService presence) {
+                                PresenceService presence,
+                                VoiceSignalingHandler voice) {
         this.mapper = mapper;
         this.sessions = sessions;
         this.subscriptions = subscriptions;
@@ -73,6 +77,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         this.permissions = permissions;
         this.broker = broker;
         this.presence = presence;
+        this.voice = voice;
     }
 
     @Override
@@ -96,6 +101,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 case DELETE_MESSAGE -> handleDeleteMessage(session, payload);
                 case REACT -> handleToggleReaction(session, payload, true);
                 case UNREACT -> handleToggleReaction(session, payload, false);
+                case VOICE_JOIN, VOICE_LEAVE, SDP_OFFER, SDP_ANSWER, ICE_CANDIDATE ->
+                        voice.handleMessage(session, payload);
                 default -> sendError(session, "Unsupported message type: " + payload.type());
             }
         } catch (PermissionDeniedException | ChannelNotFoundException
@@ -172,6 +179,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         if (channel == null) return;
 
         permissions.requireReadAccess(user.userId(), server.getId());
+        if (channel.getType() != ChannelType.TEXT) {
+            throw new IllegalArgumentException("#" + channel.getName() + " is a voice channel — use VOICE_JOIN to enter");
+        }
         String channelKey = channelKey(server, channel);
 
         java.util.Collection<WebSocketSession> preExisting =
@@ -213,6 +223,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         }
 
         permissions.requireChannelWriteAccess(user.userId(), channel);
+        if (channel.getType() != ChannelType.TEXT) {
+            throw new IllegalArgumentException("#" + channel.getName() + " is a voice channel — text messages are not supported");
+        }
         String channelKey = channelKey(server, channel);
         if (!subscriptions.isSubscribed(channelKey, session)) {
             sendError(session, "You must SUBSCRIBE to '" + server.getName() + ":" + channel.getName() + "' before posting");
@@ -360,6 +373,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         }
         sessions.unregister(session);
         subscriptions.unsubscribeFromAll(session);
+        voice.onSessionClosed(session);
         log.info("WebSocket connection closed: {} ({})", session.getId(), status);
     }
 }

@@ -2,6 +2,7 @@ package com.felipeb.discordclone.server;
 
 import com.felipeb.discordclone.auth.PasswordHasher;
 import com.felipeb.discordclone.chat.channel.ChannelSeeder;
+import com.felipeb.discordclone.chat.channel.ChannelType;
 import com.felipeb.discordclone.user.User;
 import com.felipeb.discordclone.user.UserRepository;
 import org.slf4j.Logger;
@@ -34,6 +35,7 @@ public class ServerBootstrap implements CommandLineRunner {
 
     private final String defaultServerName;
     private final List<String> defaultChannels;
+    private final List<String> defaultVoiceChannels;
 
     public ServerBootstrap(ServerRepository servers,
                            UserRepository users,
@@ -41,7 +43,8 @@ public class ServerBootstrap implements CommandLineRunner {
                            ChannelSeeder channelSeeder,
                            PasswordHasher hasher,
                            @Value("${app.bootstrap.default-server}") String defaultServerName,
-                           @Value("#{'${app.bootstrap.default-channels}'.split(',')}") List<String> defaultChannels) {
+                           @Value("#{'${app.bootstrap.default-channels}'.split(',')}") List<String> defaultChannels,
+                           @Value("#{'${app.bootstrap.default-voice-channels}'.split(',')}") List<String> defaultVoiceChannels) {
         this.servers = servers;
         this.users = users;
         this.memberships = memberships;
@@ -49,6 +52,7 @@ public class ServerBootstrap implements CommandLineRunner {
         this.hasher = hasher;
         this.defaultServerName = defaultServerName;
         this.defaultChannels = defaultChannels;
+        this.defaultVoiceChannels = defaultVoiceChannels;
     }
 
     @Override
@@ -63,7 +67,8 @@ public class ServerBootstrap implements CommandLineRunner {
         );
         Server server = servers.save(new Server(defaultServerName));
         memberships.save(new Membership(system, server, Role.OWNER));
-        channelSeeder.seedDefaults(server, defaultChannels);
+        channelSeeder.seedDefaults(server, defaultChannels, ChannelType.TEXT);
+        channelSeeder.seedDefaults(server, defaultVoiceChannels, ChannelType.VOICE);
         log.info("Bootstrapped default server '{}' (id={}) owned by '{}'", server.getName(), server.getId(), SYSTEM_USERNAME);
     }
 }

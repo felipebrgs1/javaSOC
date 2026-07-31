@@ -65,6 +65,9 @@ public class ChannelService {
 
     @Transactional
     public Message publish(Channel channel, User author, String content, List<Long> attachmentIds) {
+        if (channel.getType() == ChannelType.VOICE) {
+            throw new IllegalArgumentException("#" + channel.getName() + " is a voice channel — text messages are not supported");
+        }
         Message msg = messages.save(new Message(channel, author, content));
         if (attachmentIds != null && !attachmentIds.isEmpty()) {
             List<Attachment> atts = attachments.findByIdIn(attachmentIds);

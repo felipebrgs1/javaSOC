@@ -14,10 +14,10 @@ public class ChannelSeeder {
         this.channels = channels;
     }
 
-    public void seedDefaults(Server server, List<String> names) {
+    public void seedDefaults(Server server, List<String> names, ChannelType type) {
         for (String name : names) {
             if (!channels.existsByServerAndName(server, name)) {
-                channels.save(new Channel(server, name));
+                channels.save(new Channel(server, name, ChannelPermission.READ_WRITE, type));
             }
         }
     }

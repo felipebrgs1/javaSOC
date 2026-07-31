@@ -12,6 +12,12 @@ public enum MessageType {
     DELETE_MESSAGE,
     REACT,
     UNREACT,
+    // voice signaling (client -> server)
+    VOICE_JOIN,
+    VOICE_LEAVE,
+    SDP_OFFER,
+    SDP_ANSWER,
+    ICE_CANDIDATE,
     // server -> client
     AUTHENTICATED,
     DELIVERED,
@@ -24,5 +30,9 @@ public enum MessageType {
     MESSAGE_DELETED,
     REACTION_ADDED,
     REACTION_REMOVED,
+    // voice signaling (server -> client)
+    VOICE_JOINED,
+    VOICE_USER_JOINED,
+    VOICE_USER_LEFT,
     ERROR
 }

@@ -1,6 +1,7 @@
 package com.felipeb.discordclone.auth;
 
 import com.felipeb.discordclone.chat.channel.ChannelSeeder;
+import com.felipeb.discordclone.chat.channel.ChannelType;
 import com.felipeb.discordclone.server.Membership;
 import com.felipeb.discordclone.server.MembershipRepository;
 import com.felipeb.discordclone.server.Role;
@@ -99,7 +100,7 @@ public class UserService {
         Server server = servers.findByName(defaultServerName).orElseGet(() -> {
             // Safety net: bootstrap didn't run (e.g. in a sliced test). Create lazily.
             Server created = servers.save(new Server(defaultServerName));
-            channelSeeder.seedDefaults(created, defaultChannels);
+            channelSeeder.seedDefaults(created, defaultChannels, ChannelType.TEXT);
             log.warn("Default server '{}' was missing — created lazily", defaultServerName);
             return created;
         });

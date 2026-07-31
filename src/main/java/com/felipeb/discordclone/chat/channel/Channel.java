@@ -39,6 +39,10 @@ public class Channel {
     @Column(name = "default_permission", nullable = false, length = 16)
     private ChannelPermission defaultPermission = ChannelPermission.READ_WRITE;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type", nullable = false, length = 16)
+    private ChannelType type = ChannelType.TEXT;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -57,10 +61,16 @@ public class Channel {
         this.defaultPermission = defaultPermission;
     }
 
+    public Channel(Server server, String name, ChannelPermission defaultPermission, ChannelType type) {
+        this(server, name, defaultPermission);
+        this.type = type;
+    }
+
     public Long getId() { return id; }
     public Server getServer() { return server; }
     public String getName() { return name; }
     public ChannelPermission getDefaultPermission() { return defaultPermission; }
+    public ChannelType getType() { return type; }
     public Instant getCreatedAt() { return createdAt; }
 
     public void setDefaultPermission(ChannelPermission defaultPermission) {
