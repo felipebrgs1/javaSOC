@@ -1,0 +1,55 @@
+name: javasoc
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: javasoc
+      POSTGRES_USER: javasoc
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD no arquivo .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U javasoc -d javasoc"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/javasoc
+      SPRING_DATASOURCE_DRIVERCLASSNAME: org.postgresql.Driver
+      SPRING_DATASOURCE_USERNAME: javasoc
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD no arquivo .env}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_SHOW_SQL: "false"
+      SPRING_H2_CONSOLE_ENABLED: "false"
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?defina APP_JWT_SECRET no arquivo .env}
+    volumes:
+      - uploads:/app/uploads
+    ports:
+      # Exposto para clientes desktop/mobile conectarem direto na VPS
+      - "8080:8080"
+
+  web:
+    build:
+      context: ./javasoc_app
+      args:
+        # URL pública do servidor (ex: http://IP_DA_VPS). Os apps mobile/desktop
+        # devem usar http://IP_DA_VPS:8080 na tela de login.
+        API_BASE_URL: ${PUBLIC_URL:-http://localhost}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  pgdata:
+  uploads:

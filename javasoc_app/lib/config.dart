@@ -1,13 +1,16 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'platform_stub.dart' if (dart.library.io) 'platform_io.dart';
 
 class AppConfig {
   static const _keyBaseUrl = 'base_url_override';
 
+  static const _envBaseUrl = String.fromEnvironment('API_BASE_URL');
+
   static String get defaultBaseUrl {
-    if (!kIsWeb && Platform.isAndroid) return 'http://10.0.2.2:8080';
+    if (_envBaseUrl.isNotEmpty) return _envBaseUrl;
+    if (!kIsWeb && isAndroidPlatform) return 'http://10.0.2.2:8080';
     return 'http://localhost:8080';
   }
 

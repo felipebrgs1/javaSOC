@@ -1,0 +1,7 @@
+build/
+uploads/
+javasoc_app/
+.git/
+*.log
+docker-compose.yml
+.env
